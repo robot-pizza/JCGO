@@ -100,6 +100,8 @@ final class ClassDictionary {
 
     boolean verbose;
 
+    int javaVersion;
+
     boolean verboseTracing;
 
     boolean ignoreErrs;

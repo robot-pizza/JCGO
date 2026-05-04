@@ -81,6 +81,8 @@ public final class Main {
         System.out.println(" -d <directory> "
                 + " Specify where to place generated files");
         System.out.println(" -verbose " + " Verbose mode");
+        System.out.println(" -source <ver> "
+                + " Java source version (1.2, 1.3, 1.4, 5..21; default 1.4)");
         System.out.println(" -r[[p]c][g|[p]m][[p]f] <packageOrClass> "
                 + " Force class members reflection");
         System.out.println("@<filename> "
@@ -142,6 +144,13 @@ public final class Main {
             if (mainClassName == null) {
                 System.err.println("Target class must be specified");
                 System.exit(2);
+            }
+            if (dict.javaVersion == 0) {
+                dict.javaVersion = JavaVersion.DEFAULT;
+            }
+            if (dict.verbose) {
+                System.out.println("Java source version: "
+                        + JavaVersion.format(dict.javaVersion));
             }
             dict.javaFiles.setClassPath();
             String[] sortednames = strsQueueToSortedArr(classnames);
@@ -230,6 +239,15 @@ public final class Main {
             return true;
         } else if (option.equals("-m") && dict.failOnMethodId == null) {
             dict.failOnMethodId = value;
+            return true;
+        } else if (option.equals("-source") && dict.javaVersion == 0) {
+            int level = JavaVersion.parseSourceLevel(value);
+            if (level == 0) {
+                System.err.println("Invalid -source value: " + value
+                        + " (expected 1.2, 1.3, 1.4, or 5..21)");
+                System.exit(2);
+            }
+            dict.javaVersion = level;
             return true;
         } else {
             return false;
