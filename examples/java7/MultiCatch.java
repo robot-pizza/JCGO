@@ -1,5 +1,5 @@
-// JCGO-SKIP: multi-catch (catch (A | B e)) is Java 7 (JLS 14.20).
-// JCGO's catch grammar accepts only a single exception type today.
+// Multi-catch (Java 7, JLS 14.20). Desugared at parse time into a chain
+// of single-type catches sharing the body Term.
 
 public final class MultiCatch
 {

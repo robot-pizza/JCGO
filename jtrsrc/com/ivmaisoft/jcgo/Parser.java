@@ -1288,6 +1288,22 @@ d : new PrimaryFieldAccess(a, c));
 			AnnotationGroup();
 		}
 		d = QualifiedIdentifier();
+		// Multi-catch (Java 7+): collect additional alternative types
+		// separated by `|`. The whole clause is desugared to a chain of
+		// single-type catches sharing the body Term — per JLS 14.20 each
+		// catch is examined in source order, so the split is semantically
+		// equivalent. Body code emits N times in C output (acceptable for
+		// slice 6; refactor to a shared body when worth optimizing).
+		ObjVector altTypes = null;
+		while (t.kind == 80) {
+			Get();
+			if (Main.dict.javaVersion < JavaVersion.JLS_70) {
+				SemError("multi-catch (|) requires -source 7 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			if (altTypes == null) altTypes = new ObjVector();
+			altTypes.addElement(QualifiedIdentifier());
+		}
 		e = Identifier();
 		Expect(12);
 		Expect(28);
@@ -1297,7 +1313,18 @@ d : new PrimaryFieldAccess(a, c));
 		Expect(29);
 		z = new CatchStatement(c, new ClassOrIfaceType(d),
 		     new VariableIdentifier(e), h);
-		
+		if (altTypes != null) {
+			String idName = e.dottedName();
+			for (int i = 0; i < altTypes.size(); i++) {
+				Term altType = (Term) altTypes.elementAt(i);
+				Term altCatch = new CatchStatement(c,
+					new ClassOrIfaceType(altType),
+					new VariableIdentifier(new LexTerm(LexTerm.ID, idName)),
+					h);
+				z = new CatchSeq(z, altCatch);
+			}
+		}
+
 		return z;
 	}
 
