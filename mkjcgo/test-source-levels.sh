@@ -55,8 +55,15 @@ fail=0
 neg_pass=0
 neg_fail=0
 
+skip=0
+
 run_positive() {
-    ver=$1; cls=$2; outdir="$OUTROOT/java$ver/$cls"
+    ver=$1; cls=$2; src="examples/java$ver/$cls.java"; outdir="$OUTROOT/java$ver/$cls"
+    if [ -f "$src" ] && head -3 "$src" | grep -q "JCGO-SKIP"; then
+        skip=$((skip + 1))
+        echo "  skip: java$ver $cls (JCGO-SKIP marker)"
+        return
+    fi
     mkdir -p "$outdir"
     if java -Xss1M -jar jcgo.jar -source "$ver" -d "$outdir" \
             -src "examples/java$ver" $SRCS "$cls" >"$outdir/stdout" 2>&1; then
@@ -106,7 +113,7 @@ for v in $versions; do
 done
 
 echo
-echo "Summary: positive $pass/$((pass+fail)), negative $neg_pass/$((neg_pass+neg_fail))"
+echo "Summary: positive $pass/$((pass+fail)), negative $neg_pass/$((neg_pass+neg_fail)), skipped $skip"
 if [ $fail -gt 0 ] || [ $neg_fail -gt 0 ]; then
     exit 1
 fi
