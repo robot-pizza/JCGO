@@ -65,6 +65,10 @@ final class IfThenElse extends LexNode {
         if (terms[0].exprType().objectSize() != Type.BOOLEAN) {
             fatalError(c, "The condition expression must be of boolean type");
         }
+        InstanceOf patternIof = unwrapPatternInstanceOf(terms[0]);
+        if (patternIof != null) {
+            prependPatternBinding(patternIof);
+        }
         constVal0 = terms[0].evaluateConstValue();
         if (constVal0 != null) {
             terms[constVal0.isNonZero() ? 1 : 2].processPass1(c);
@@ -130,6 +134,34 @@ final class IfThenElse extends LexNode {
             c.hasBreakSimple |= oldHasBreakSimple;
             c.hasBreakDeep |= oldHasBreakDeep;
         }
+    }
+
+    private static InstanceOf unwrapPatternInstanceOf(Term t) {
+        Term cur = t;
+        while (cur instanceof ParenExpression) {
+            cur = ((ParenExpression) cur).terms[0];
+        }
+        if (cur instanceof InstanceOf
+                && ((InstanceOf) cur).getBindingName() != null) {
+            return (InstanceOf) cur;
+        }
+        return null;
+    }
+
+    private void prependPatternBinding(InstanceOf iof) {
+        String name = iof.getBindingName();
+        Term typeTerm = iof.getTypeTerm();
+        Term dimsTerm = iof.getDimsTerm();
+        Term operand = iof.getOperand();
+        Term castType = dimsTerm.notEmpty()
+                ? new TypeWithDims(typeTerm, dimsTerm) : typeTerm;
+        Term cast = new CastExpression(castType, operand);
+        Term varDeclr = new VariableDeclarator(
+                new VariableIdentifier(new LexTerm(LexTerm.ID, name)),
+                Empty.newTerm(), cast);
+        Term decl = new ExprStatement(new LocalVariableDecl(castType,
+                varDeclr));
+        terms[1] = new Block(new Seq(decl, terms[1]));
     }
 
     int tokenCount() {

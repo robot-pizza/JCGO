@@ -943,8 +943,17 @@ d : new PrimaryFieldAccess(a, c));
 		if (t.kind == 43) {
 			d = DimSpecSeq();
 		}
-		z = new InstanceOf(a, c, d);
-		
+		InstanceOf io = new InstanceOf(a, c, d);
+		// Pattern instanceof (Java 16): optional binding identifier.
+		if (t.kind == 1 || t.kind == 7) {
+			if (Main.dict.javaVersion < JavaVersion.JLS_160) {
+				SemError("pattern instanceof requires -source 16 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			Get();
+			io.setBindingName(token.val);
+		}
+		z = io;
 		return z;
 	}
 

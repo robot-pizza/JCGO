@@ -50,8 +50,30 @@ final class InstanceOf extends LexNode {
 
     private ClassDefinition cd;
 
+    private String bindingName;
+
     InstanceOf(Term a, Term c, Term d) {
         super(a, c, d);
+    }
+
+    void setBindingName(String name) {
+        this.bindingName = name;
+    }
+
+    String getBindingName() {
+        return bindingName;
+    }
+
+    Term getOperand() {
+        return terms[0];
+    }
+
+    Term getTypeTerm() {
+        return terms[1];
+    }
+
+    Term getDimsTerm() {
+        return terms[2];
     }
 
     void processPass1(Context c) {

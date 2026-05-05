@@ -45,6 +45,7 @@ prev_for_5=1.4
 prev_for_7=6
 prev_for_8=7
 prev_for_10=9
+prev_for_16=15
 
 # Whitelist of (version, classname) pairs that should ALSO be tested
 # negatively. These are fixtures known to depend on a feature gated at
@@ -55,6 +56,7 @@ neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
 neg_7="MultiCatch StringSwitch"
 neg_8="DefaultIface"
 neg_10="VarLocal VarFor VarForeach"
+neg_16="PatternInstanceof"
 
 pass=0
 fail=0
