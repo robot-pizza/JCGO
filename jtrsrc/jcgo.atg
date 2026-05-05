@@ -724,13 +724,15 @@ ReturnStatement<^Term z> (. Term b = Empty.term; .) =
  [JavaExpression<^b>]
  ";" (. z = new ReturnStatement(b); .).
 
-/* Strings in switch (Java 7, JLS 14.11) — slice 7a parses and version-
-   gates a String discriminant; pass1 fires fatalError "string switch is
-   not yet implemented" until slice 7b lands the desugar. The grammar
-   itself doesn't change since case labels accept ConditionalExpression
-   which already covers string literals; the type checks in
-   SwitchStatement.processPass1 / CaseStatement.processPass1 are what
-   relax. */
+/* Strings in switch (Java 7, JLS 14.11): SwitchStatement.processPass1
+   detects a String discriminant, version-gates on -source 7+, and
+   replaces terms[2] (the case chain) with a synthetic Block holding a
+   temp local plus an IfThenElse chain that compares the temp to each
+   case label via String.equals(). Consecutive empty-body cases group
+   into a single if branch with `||`-chained equals calls.
+   processOutput wraps the synthesized block in `do { ... } while (0);`
+   so unlabeled `break` statements inside case bodies have a C target
+   to exit through. The grammar itself doesn't change. */
 SwitchStatement<^Term z> (. Term c, f = Empty.term; .) =
  "("
  JavaExpression<^c>

@@ -3,7 +3,7 @@
  * a part of JCGO translator.
  **
  * Project: JCGO (http://www.ivmaisoft.com/jcgo/)
- * Copyright (C) 2001-2012 Ivan Maidanski <ivmai@mail.ru>
+ * Copyright (C) 2001-2026 Ivan Maidanski <ivmai@mail.ru>
  * All rights reserved.
  */
 
@@ -40,12 +40,24 @@ package com.ivmaisoft.jcgo;
 
 /**
  * Grammar production for 'switch'.
- ** 
+ **
  * Format: SWITCH LPAREN Expression RPAREN LBRACE
  * SwitchBlockStatementGroups/Empty RBRACE
+ *
+ * String discriminants (Java 7, JLS 14.11) are supported via a parse-time
+ * desugar at processPass1: the case chain is rewritten into a Block that
+ * holds a temp local for the discriminant plus an IfThenElse chain
+ * comparing the temp against each case label via String.equals(). Breaks
+ * inside case bodies still target this SwitchStatement's break label
+ * because BreakableStmt's processPassOneBegin/End wraps the desugared
+ * subtree just like the original case chain.
  */
 
 final class SwitchStatement extends BreakableStmt {
+
+    private static int nextStringSwitchId;
+
+    private boolean isStringSwitch;
 
     SwitchStatement(Term c, Term f) {
         super(c, new LeftBrace(), f, new RightBrace());
@@ -67,13 +79,13 @@ final class SwitchStatement extends BreakableStmt {
                                 + JavaVersion.format(Main.dict.javaVersion)
                                 + ")");
             }
-            fatalError(c,
-                    "string switch is not yet implemented in this fork "
-                    + "(parser accepts the syntax; desugar is slice 7b)");
-        }
-        int s0 = discrType.objectSize();
-        if (s0 < Type.BYTE || s0 > Type.INT) {
-            fatalError(c, "Illegal type of switch expression");
+            terms[2] = buildStringSwitchDesugar(terms[0], terms[2]);
+            isStringSwitch = true;
+        } else {
+            int s0 = discrType.objectSize();
+            if (s0 < Type.BYTE || s0 > Type.INT) {
+                fatalError(c, "Illegal type of switch expression");
+            }
         }
         terms[1].processPass1(c);
         boolean oldBreakableHidden = c.breakableHidden;
@@ -92,6 +104,18 @@ final class SwitchStatement extends BreakableStmt {
     }
 
     void processOutput(OutputContext oc) {
+        if (isStringSwitch) {
+            // Wrap the desugared block in `do { ... } while (0);` so the
+            // unlabeled `break` statements that BreakStatement.processOutput
+            // emits inside case bodies have an enclosing C construct to
+            // exit. labeled-break paths bypass this by going to the
+            // outputBreakLabel emitted below.
+            oc.cPrint("do ");
+            terms[2].processOutput(oc);
+            oc.cPrint("while (0);");
+            outputBreakLabel(oc);
+            return;
+        }
         oc.cPrint("switch (");
         terms[0].processOutput(oc);
         oc.cPrint(")");
@@ -103,5 +127,92 @@ final class SwitchStatement extends BreakableStmt {
         }
         terms[3].processOutput(oc);
         outputBreakLabel(oc);
+    }
+
+    // === String-switch desugar helpers ===========================
+
+    private static Term buildStringSwitchDesugar(Term discriminant,
+            Term caseChain) {
+        ObjVector cases = new ObjVector();
+        flattenCases(caseChain, cases);
+
+        ObjVector groups = new ObjVector();
+        ObjVector pendingLabels = new ObjVector();
+        Term defaultBody = null;
+
+        for (int i = 0; i < cases.size(); i++) {
+            CaseStatement cs = (CaseStatement) cases.elementAt(i);
+            Term label = cs.terms[0];
+            Term body = cs.terms[1];
+            if (!label.notEmpty()) {
+                if (body.notEmpty()) {
+                    defaultBody = body;
+                }
+                continue;
+            }
+            pendingLabels.addElement(label);
+            if (body.notEmpty()) {
+                Object[] g = new Object[2];
+                g[0] = pendingLabels;
+                g[1] = body;
+                groups.addElement(g);
+                pendingLabels = new ObjVector();
+            }
+        }
+
+        String tmpName = "$jcgoSwitchStr$" + (nextStringSwitchId++);
+
+        Term result = defaultBody != null ? defaultBody : Empty.newTerm();
+        for (int i = groups.size() - 1; i >= 0; i--) {
+            Object[] g = (Object[]) groups.elementAt(i);
+            ObjVector labels = (ObjVector) g[0];
+            Term body = (Term) g[1];
+            Term cond = buildEqualsCall(tmpName,
+                    (Term) labels.elementAt(0));
+            for (int j = 1; j < labels.size(); j++) {
+                cond = new CondOrAndOperation(cond,
+                        new LexTerm(LexTerm.OR, "||"),
+                        buildEqualsCall(tmpName,
+                                (Term) labels.elementAt(j)));
+            }
+            result = new IfThenElse(cond, body, result);
+        }
+
+        Term strType = new ClassOrIfaceType(stringQualifiedName());
+        Term tmpDecl = new ExprStatement(new LocalVariableDecl(strType,
+                new VariableDeclarator(
+                        new VariableIdentifier(new LexTerm(LexTerm.ID,
+                                tmpName)),
+                        Empty.newTerm(), discriminant)));
+
+        return new Block(new Seq(tmpDecl, result));
+    }
+
+    private static void flattenCases(Term t, ObjVector out) {
+        if (!t.notEmpty()) {
+            return;
+        }
+        if (t instanceof Seq) {
+            Seq s = (Seq) t;
+            flattenCases(s.terms[0], out);
+            flattenCases(s.terms[1], out);
+        } else if (t instanceof CaseStatement) {
+            out.addElement(t);
+        }
+    }
+
+    private static Term stringQualifiedName() {
+        return new QualifiedName(new LexTerm(LexTerm.ID, "java"),
+                new QualifiedName(new LexTerm(LexTerm.ID, "lang"),
+                        new QualifiedName(new LexTerm(LexTerm.ID, "String"),
+                                Empty.newTerm())));
+    }
+
+    private static Term buildEqualsCall(String tmpName, Term labelExpr) {
+        Term receiver = new Expression(new QualifiedName(new LexTerm(
+                LexTerm.ID, tmpName), Empty.newTerm()));
+        return new MethodInvocation(receiver,
+                new LexTerm(LexTerm.ID, "equals"),
+                new Argument(labelExpr));
     }
 }
