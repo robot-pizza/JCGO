@@ -85,6 +85,10 @@ final class FormalParamList extends LexNode {
                 terms[1].makeArgumentList());
     }
 
+    boolean isLastFormalVarArgs() {
+        return terms[1].isLastFormalVarArgs();
+    }
+
     int tokenCount() {
         return terms[0].tokenCount() + terms[1].tokenCount();
     }

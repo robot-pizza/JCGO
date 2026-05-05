@@ -54,9 +54,19 @@ final class MethodSignature {
 
     private String csign;
 
+    private boolean isVarArgs;
+
     MethodSignature(String id, ObjVector sign) {
         this.id = id;
         this.sign = sign;
+    }
+
+    void setVarArgs() {
+        isVarArgs = true;
+    }
+
+    boolean isVarArgs() {
+        return isVarArgs;
     }
 
     String signatureString() {

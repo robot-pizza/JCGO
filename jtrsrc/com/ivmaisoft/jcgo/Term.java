@@ -264,6 +264,10 @@ abstract class Term {
     void storeSignature(ObjVector parmSig) {
     }
 
+    boolean isLastFormalVarArgs() {
+        return false;
+    }
+
     boolean isSuper(boolean onlyEmpty) {
         return false;
     }

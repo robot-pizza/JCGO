@@ -654,6 +654,9 @@ final class MethodDefinition {
     MethodSignature methodSignature() {
         if (ourSig == null) {
             ourSig = new MethodSignature(id, paramList.getSignature());
+            if (paramList.isLastFormalVarArgs()) {
+                ourSig.setVarArgs();
+            }
         }
         return ourSig;
     }

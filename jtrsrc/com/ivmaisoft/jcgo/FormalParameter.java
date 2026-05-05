@@ -71,6 +71,10 @@ final class FormalParameter extends LexNode {
         return isVarArgs;
     }
 
+    boolean isLastFormalVarArgs() {
+        return isVarArgs;
+    }
+
     Term joinParamLists(Term paramList) {
         if (!paramList.notEmpty())
             return this;
