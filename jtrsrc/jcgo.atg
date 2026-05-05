@@ -193,10 +193,23 @@ ImportDeclarationSeq<^Term z> (. Term a, b = null; .) =
  ImportDeclaration<^a>
  [ImportDeclarationSeq<^b>] (. z = b != null ? new Seq(a, b) : a; .).
 
-ImportDeclaration<^Term z> (. Term b; .) =
+/* Imports accept the optional "static" keyword added in Java 5
+   (JLS 7.5.3 / 7.5.4). Static imports are parsed and version-gated;
+   actual resolution of unqualified static-imported names is deferred
+   to a follow-up slice. processPass0 records the version error if
+   -source < 5; otherwise the static import is accepted but currently
+   not stored in the import buckets, so unqualified references to
+   imported members won't yet bind. */
+ImportDeclaration<^Term z> (. Term b; boolean isStatic = false; .) =
  "import"
+ ["static" (. isStatic = true; .)]
  IdentOptImportDeclSpec<^b>
- ";" (. z = new ImportDeclaration(b); .).
+ ";"
+  (.
+   ImportDeclaration imp = new ImportDeclaration(b);
+   if (isStatic) imp.setStatic();
+   z = imp;
+  .).
 
 IdentOptImportDeclSpec<^Term z> (. Term a, c = Empty.term; .) =
  Identifier<^a>

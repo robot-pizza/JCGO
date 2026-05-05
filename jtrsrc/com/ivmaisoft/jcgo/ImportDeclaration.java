@@ -46,11 +46,29 @@ package com.ivmaisoft.jcgo;
 
 final class ImportDeclaration extends LexNode {
 
+    private boolean isStatic;
+
     ImportDeclaration(Term b) {
         super(b);
     }
 
+    void setStatic() {
+        isStatic = true;
+    }
+
+    boolean isStatic() {
+        return isStatic;
+    }
+
     void processPass0(Context c) {
+        if (isStatic) {
+            if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+                fatalError(c,
+                        "static import requires -source 5 or higher (got "
+                        + JavaVersion.format(Main.dict.javaVersion) + ")");
+            }
+            return;
+        }
         c.addImport(terms[0].dottedName());
     }
 

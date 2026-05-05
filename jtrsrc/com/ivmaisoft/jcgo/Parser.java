@@ -2657,10 +2657,17 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ImportDeclaration() {
 		Term z;
 		Term b;
+		boolean isStatic = false;
 		Expect(14);
+		if (t.kind == 19) {
+			Get();
+			isStatic = true;
+		}
 		b = IdentOptImportDeclSpec();
 		Expect(9);
-		z = new ImportDeclaration(b);
+		ImportDeclaration imp = new ImportDeclaration(b);
+		if (isStatic) imp.setStatic();
+		z = imp;
 		return z;
 	}
 
