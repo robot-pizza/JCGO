@@ -2357,6 +2357,14 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term AccModifier() {
 		Term z;
 		z = Empty.term;
+		if (looksLikeSealed()) {
+			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+				SemError("sealed requires -source 17 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			Get();
+			return z;
+		}
 		switch (t.kind) {
 		case 16: {
 			Get();
@@ -2473,7 +2481,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = AccModifier();
-		if (StartOf(26) || t.kind == 60) {
+		if (StartOf(26) || t.kind == 60 || looksLikeSealed()) {
 			b = ModifierSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2483,7 +2491,7 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassBodyDecl() {
 		Term z;
 		Term a = Empty.term, b;
-		if (StartOf(26) || t.kind == 60) {
+		if (StartOf(26) || t.kind == 60 || looksLikeSealed()) {
 			a = ModifierSeq();
 		}
 		b = MemberDecl();
@@ -2496,7 +2504,8 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term;
 		if (t.kind == 9) {
 			Get();
-		} else if (StartOf(27) || t.kind == 60) {
+		} else if (StartOf(27) || t.kind == 60 || looksLikeSealed()
+				|| looksLikeRecord()) {
 			z = ClassBodyDecl();
 		} else Error(150);
 		return z;
@@ -2506,7 +2515,8 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = SemiOrClassBodyDecl();
-		if (StartOf(28) || t.kind == 60) {
+		if (StartOf(28) || t.kind == 60 || looksLikeSealed()
+				|| looksLikeRecord()) {
 			b = SemiOrClassBodyDeclSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2562,6 +2572,9 @@ d : new PrimaryFieldAccess(a, c));
 		if (t.kind == 25) {
 			c = ExtendsInterfaceTypes();
 		}
+		if (looksLikePermits()) {
+			consumePermitsClause();
+		}
 		d = ClassBody();
 		z = new IfaceDeclaration(b, c, d);
 		return z;
@@ -2577,14 +2590,47 @@ d : new PrimaryFieldAccess(a, c));
 		if (t.kind == 26) {
 			d = ImplementsTypes();
 		}
+		if (looksLikePermits()) {
+			consumePermitsClause();
+		}
 		e = ClassBody();
 		z = new ClassDeclaration(b, c, d, e);
 		return z;
 	}
 
+	// Sealed types (Java 17). `sealed` and `permits` are contextual
+	// keywords (identifier kind), recognized only in class/interface
+	// declaration position. JCGO doesn't enforce sealed semantics; this
+	// is parse-and-discard. `non-sealed` (hyphenated) is not yet
+	// supported — would need a 3-token peek across `non` `-` `sealed`.
+	private static boolean looksLikeSealed() {
+		return t.kind == 1 && "sealed".equals(t.val);
+	}
+
+	private static boolean looksLikePermits() {
+		return t.kind == 1 && "permits".equals(t.val);
+	}
+
+	private static void consumePermitsClause() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+			SemError("sealed/permits requires -source 17 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Get();
+		ClassTypeList();
+	}
+
 	private static Term ClassModifier() {
 		Term z;
 		z = Empty.term;
+		if (looksLikeSealed()) {
+			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+				SemError("sealed requires -source 17 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			Get();
+			return z;
+		}
 		switch (t.kind) {
 		case 16: {
 			Get();
@@ -2715,7 +2761,8 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = ClassModifier();
-		if (StartOf(29) && !(t.kind == 10 && peek(2).kind == 24)) {
+		if ((StartOf(29) && !(t.kind == 10 && peek(2).kind == 24))
+				|| looksLikeSealed()) {
 			b = ClassModifierSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2725,7 +2772,8 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassInterfaceDeclaration() {
 		Term z;
 		Term a = Empty.term, b;
-		if (StartOf(29) && !(t.kind == 10 && peek(2).kind == 24)) {
+		if ((StartOf(29) && !(t.kind == 10 && peek(2).kind == 24))
+				|| looksLikeSealed()) {
 			a = ClassModifierSeq();
 		}
 		b = ClassDeclOrInterfaceDecl();
