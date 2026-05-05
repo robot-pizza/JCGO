@@ -772,12 +772,20 @@ CatchClauseSeq<^Term z> (. Term a, b = null; .) =
  CatchClause<^a>
  [CatchClauseSeq<^b>] (. z = b != null ? new CatchSeq(a, b) : a; .).
 
+/* Multi-catch (Java 7, JLS 14.20): the type position accepts a `|`-
+   separated list of exception types. The hand-edited Parser.java
+   collects the alternatives and builds a CatchSeq of single-type
+   catches sharing the body Term — semantically equivalent to a real
+   union catch since each clause is examined in source order, but the
+   body code emits N times in the C output. -source-7 gate fires at
+   parse time via Parser.SemError. */
 CatchClause<^Term z> (. Term c = Empty.term, d, e, h = Empty.term; .) =
  "catch"
  "("
  [FinalModifier<^c>]
  [AnnotationGroup]
  QualifiedIdentifier<^d>
+ { "|" QualifiedIdentifier<^d> /* alts collected in Parser.java */ }
  Identifier<^e>
  ")"
  "{"
