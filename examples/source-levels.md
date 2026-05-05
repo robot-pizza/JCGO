@@ -20,7 +20,7 @@ For language details per version see `docs/java-versions.md`.
 
 | Dir            | Adds vs. previous                                  | Status (2026-05) |
 |----------------|----------------------------------------------------|------------------|
-| `java5/`       | foreach, generics, enums, annotations, varargs, autoboxing, static import, hex FP literals | base copies (Stage 1 pending) |
+| `java5/`       | foreach, generics, enums, annotations, varargs, autoboxing, static import, hex FP literals | foreach landed (ListDir uses it; QSort/ShowProp loops aren't natural foreach fits; other JLS-5 features pending grammar slices) |
 | `java6/`       | (no language additions)                            | base copies (will mirror `java5/` after Stage 1) |
 | `java7/`       | try-with-resources, multi-catch, diamond, strings-in-switch, numeric underscores, binary literals | base copies (Stage 2 pending) |
 | `java8/`       | lambdas, method references, default + static interface methods, type annotations | base copies (Stage 3 pending) |

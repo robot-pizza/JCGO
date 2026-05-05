@@ -9,9 +9,9 @@ public class ListDir
   String list[] = dir.list();
   if (list != null)
   {
-   for (int i = 0; i < list.length; i++)
+   for (String name : list)
    {
-    File f = new File(dir, list[i]);
+    File f = new File(dir, name);
     System.out.println("[" + f.getName() + "] " +
      (f.exists() ? "E" : "-") + (f.isFile() ? "F" : "-") +
      (f.isDirectory() ? "D" : "-") + (f.isHidden() ? "H" : "-") +
