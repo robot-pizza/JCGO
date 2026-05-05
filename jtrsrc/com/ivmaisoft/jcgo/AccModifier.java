@@ -60,6 +60,8 @@ final class AccModifier extends LexNode {
     static final int SYNTHETIC = 0x1000;
     static final int ENUM = 0x4000;
 
+    static final int DEFAULT = 0x10000;
+
     static final int LOCALVAR = 0x2000;
     static final int PARAMETER = 0x8000;
 

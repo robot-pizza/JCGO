@@ -2404,6 +2404,11 @@ d : new PrimaryFieldAccess(a, c));
 			z = new AccModifier(AccModifier.STRICT);
 			break;
 		}
+		case 60: {
+			Get();
+			z = new AccModifier(AccModifier.DEFAULT);
+			break;
+		}
 		case 10: {
 			Annotation();
 			break;
@@ -2454,7 +2459,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = AccModifier();
-		if (StartOf(26)) {
+		if (StartOf(26) || t.kind == 60) {
 			b = ModifierSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2464,7 +2469,7 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassBodyDecl() {
 		Term z;
 		Term a = Empty.term, b;
-		if (StartOf(26)) {
+		if (StartOf(26) || t.kind == 60) {
 			a = ModifierSeq();
 		}
 		b = MemberDecl();
@@ -2477,7 +2482,7 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term;
 		if (t.kind == 9) {
 			Get();
-		} else if (StartOf(27)) {
+		} else if (StartOf(27) || t.kind == 60) {
 			z = ClassBodyDecl();
 		} else Error(150);
 		return z;
@@ -2487,7 +2492,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = SemiOrClassBodyDecl();
-		if (StartOf(28)) {
+		if (StartOf(28) || t.kind == 60) {
 			b = SemiOrClassBodyDeclSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2512,7 +2517,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b = Empty.term;
 		Expect(28);
-		if (StartOf(28)) {
+		if (StartOf(28) || t.kind == 60) {
 			b = SemiOrClassBodyDeclSeq();
 		}
 		Expect(29);

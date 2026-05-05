@@ -76,11 +76,32 @@ final class MethodDeclaration extends LexNode {
         if ((c.modifiers & (AccModifier.VOLATILE | AccModifier.TRANSIENT)) != 0) {
             fatalError(c, "Illegal modifier specified for method: " + id);
         }
-        if (((c.modifiers & AccModifier.ABSTRACT) != 0 || c.currentClass
-                .isInterface())
+        boolean isInterfaceConcrete = c.currentClass.isInterface()
+                && (c.modifiers & (AccModifier.DEFAULT | AccModifier.STATIC
+                        | AccModifier.PRIVATE)) != 0;
+        if (isInterfaceConcrete) {
+            if ((c.modifiers & (AccModifier.STATIC | AccModifier.DEFAULT))
+                    != 0
+                    && Main.dict.javaVersion < JavaVersion.JLS_80) {
+                fatalError(c,
+                        "default/static interface method requires -source 8 or higher (got "
+                                + JavaVersion.format(Main.dict.javaVersion)
+                                + ")");
+            }
+            if ((c.modifiers & AccModifier.PRIVATE) != 0
+                    && Main.dict.javaVersion < JavaVersion.JLS_90) {
+                fatalError(c,
+                        "private interface method requires -source 9 or higher (got "
+                                + JavaVersion.format(Main.dict.javaVersion)
+                                + ")");
+            }
+        }
+        if (((c.modifiers & AccModifier.ABSTRACT) != 0
+                || (c.currentClass.isInterface() && !isInterfaceConcrete))
                 && (c.modifiers & (AccModifier.PRIVATE | AccModifier.STATIC
                         | AccModifier.SYNCHRONIZED | AccModifier.NATIVE
-                        | AccModifier.FINAL | AccModifier.STRICT)) != 0) {
+                        | AccModifier.FINAL | AccModifier.STRICT
+                        | AccModifier.DEFAULT)) != 0) {
             fatalError(c, "Illegal modifier found for an abstract method: "
                     + id);
         }
