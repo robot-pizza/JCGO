@@ -55,7 +55,23 @@ final class SwitchStatement extends BreakableStmt {
         TryStatement oldLastBreakableTry = c.lastBreakableTry;
         c.lastBreakableTry = c.currentTry;
         terms[0].processPass1(c);
-        int s0 = terms[0].exprType().objectSize();
+        ExpressionType discrType = terms[0].exprType();
+        ClassDefinition discrClass = discrType.signatureClass();
+        boolean isStringDiscr = discrClass != null
+                && Names.JAVA_LANG_STRING.equals(discrClass.name())
+                && discrType.signatureDimensions() == 0;
+        if (isStringDiscr) {
+            if (Main.dict.javaVersion < JavaVersion.JLS_70) {
+                fatalError(c,
+                        "string switch requires -source 7 or higher (got "
+                                + JavaVersion.format(Main.dict.javaVersion)
+                                + ")");
+            }
+            fatalError(c,
+                    "string switch is not yet implemented in this fork "
+                    + "(parser accepts the syntax; desugar is slice 7b)");
+        }
+        int s0 = discrType.objectSize();
         if (s0 < Type.BYTE || s0 > Type.INT) {
             fatalError(c, "Illegal type of switch expression");
         }

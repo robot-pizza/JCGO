@@ -724,6 +724,13 @@ ReturnStatement<^Term z> (. Term b = Empty.term; .) =
  [JavaExpression<^b>]
  ";" (. z = new ReturnStatement(b); .).
 
+/* Strings in switch (Java 7, JLS 14.11) — slice 7a parses and version-
+   gates a String discriminant; pass1 fires fatalError "string switch is
+   not yet implemented" until slice 7b lands the desugar. The grammar
+   itself doesn't change since case labels accept ConditionalExpression
+   which already covers string literals; the type checks in
+   SwitchStatement.processPass1 / CaseStatement.processPass1 are what
+   relax. */
 SwitchStatement<^Term z> (. Term c, f = Empty.term; .) =
  "("
  JavaExpression<^c>

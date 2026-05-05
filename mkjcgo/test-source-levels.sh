@@ -50,7 +50,7 @@ prev_for_7=6
 # positive test (since they may be pre-modern code that translates at
 # any level).
 neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
-neg_7="MultiCatch"
+neg_7="MultiCatch StringSwitch"
 
 pass=0
 fail=0
