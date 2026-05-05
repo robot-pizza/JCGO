@@ -43,16 +43,29 @@ package com.ivmaisoft.jcgo;
  **
  * Format: FOR LPAREN SimpleType Identifier COLON Expression RPAREN Statement
  *
- * Slice 1: parse + version gate only. Desugaring to a classic for-loop is a
- * follow-up slice — until then, processPass1 emits a clear "not yet
- * implemented" error at -source 5+. The negative case (-source 1.4) is fully
- * exercised: foreach in 1.4 sources fails with a version error.
+ * Slice 1 covers array-typed iterables only. The iterable expression is
+ * desugared at construction time into a classic for-loop:
+ *
+ *   for (T x : iter) body
+ *      desugars to
+ *   { T[] $jcgoArr$N = iter;
+ *     int $jcgoIdx$N = 0;
+ *     for (; $jcgoIdx$N &lt; $jcgoArr$N.length; $jcgoIdx$N++) {
+ *       T x = $jcgoArr$N[$jcgoIdx$N];
+ *       body;
+ *     }
+ *   }
+ *
+ * The synthetic temps' names embed a per-instance counter to avoid collision
+ * across nested foreaches and across foreach + user code.
  */
 
 final class ForeachStatement extends LexNode {
 
-    ForeachStatement(Term type, Term varIdent, Term iterableExpr, Term body) {
-        super(type, varIdent, iterableExpr, body);
+    private static int nextId;
+
+    ForeachStatement(Term type, Term varIdent, Term iter, Term body) {
+        super(buildDesugar(type, varIdent, iter, body));
     }
 
     void processPass1(Context c) {
@@ -60,16 +73,58 @@ final class ForeachStatement extends LexNode {
             fatalError(c, "enhanced for loop requires -source 5 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
         }
-        fatalError(c,
-                "enhanced for loop is not yet implemented in this fork "
-                + "(parser accepts the syntax; desugaring is a follow-up slice)");
+        terms[0].processPass1(c);
     }
 
-    void processOutput(OutputContext oc) {
-        oc.cPrint("/* foreach: not yet implemented */");
+    private static String fresh(String prefix) {
+        return prefix + (nextId++);
     }
 
-    ExpressionType traceClassInit() {
-        return null;
+    private static Term identName(String name) {
+        return new QualifiedName(new LexTerm(LexTerm.ID, name), Empty.newTerm());
+    }
+
+    private static Term identRef(String name) {
+        return new Expression(identName(name));
+    }
+
+    private static Term buildDesugar(Term userType, Term userVarIdent,
+            Term iter, Term body) {
+        String aName = fresh("$jcgoArr$");
+        String iName = fresh("$jcgoIdx$");
+
+        Term arrType = new TypeWithDims(userType, new DimSpec(Empty.newTerm()));
+        Term arrDeclr = new VariableDeclarator(
+                new VariableIdentifier(new LexTerm(LexTerm.ID, aName)),
+                Empty.newTerm(), iter);
+        Term arrLocal = new ExprStatement(new LocalVariableDecl(arrType,
+                arrDeclr));
+
+        Term idxType = new PrimitiveType(Type.INT);
+        Term idxDeclr = new VariableDeclarator(
+                new VariableIdentifier(new LexTerm(LexTerm.ID, iName)),
+                Empty.newTerm(), new IntLiteral("0"));
+        Term idxLocal = new ExprStatement(new LocalVariableDecl(idxType,
+                idxDeclr));
+
+        Term lengthAccess = new PrimaryFieldAccess(identRef(aName),
+                identName("length"));
+        Term cond = new RelationalOp(identRef(iName),
+                new LexTerm(LexTerm.LT, "<"), lengthAccess);
+
+        Term update = new PostfixOp(identRef(iName),
+                new LexTerm(LexTerm.INCREMENT, "++"));
+
+        Term arrAccess = new ArrayAccess(identRef(aName), identRef(iName));
+        Term userVarDeclr = new VariableDeclarator(userVarIdent,
+                Empty.newTerm(), arrAccess);
+        Term userVarLocal = new ExprStatement(new LocalVariableDecl(userType,
+                userVarDeclr));
+
+        Term innerBlock = new Block(new Seq(userVarLocal, body));
+        Term forStmt = new ForStatement(Empty.newTerm(), cond, update,
+                innerBlock);
+
+        return new Block(new Seq(arrLocal, new Seq(idxLocal, forStmt)));
     }
 }
