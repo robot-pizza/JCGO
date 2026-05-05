@@ -52,7 +52,7 @@ prev_for_10=9
 # any level).
 neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
 neg_7="MultiCatch StringSwitch"
-neg_10="VarLocal"
+neg_10="VarLocal VarFor VarForeach"
 
 pass=0
 fail=0

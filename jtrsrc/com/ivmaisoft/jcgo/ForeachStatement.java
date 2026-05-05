@@ -64,14 +64,39 @@ final class ForeachStatement extends LexNode {
 
     private static int nextId;
 
+    private boolean isVarForeach;
+
     ForeachStatement(Term type, Term varIdent, Term iter, Term body) {
         super(buildDesugar(type, varIdent, iter, body));
+        this.isVarForeach = isVarLikeType(type);
+    }
+
+    private static boolean isVarLikeType(Term t) {
+        if (!t.notEmpty()) {
+            return false;
+        }
+        if (t.isName()) {
+            return "var".equals(t.dottedName());
+        }
+        if (t instanceof ClassOrIfaceType) {
+            Term inner = ((ClassOrIfaceType) t).getNameTerm();
+            return inner != null && inner.isName()
+                    && "var".equals(inner.dottedName());
+        }
+        return false;
     }
 
     void processPass1(Context c) {
         if (Main.dict.javaVersion < JavaVersion.JLS_50) {
             fatalError(c, "enhanced for loop requires -source 5 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
+        }
+        if (isVarForeach
+                && Main.dict.javaVersion < JavaVersion.JLS_100) {
+            fatalError(c,
+                    "var in foreach requires -source 10 or higher (got "
+                            + JavaVersion.format(Main.dict.javaVersion)
+                            + ")");
         }
         terms[0].processPass1(c);
     }
@@ -93,7 +118,13 @@ final class ForeachStatement extends LexNode {
         String aName = fresh("$jcgoArr$");
         String iName = fresh("$jcgoIdx$");
 
-        Term arrType = new TypeWithDims(userType, new DimSpec(Empty.newTerm()));
+        // When userType is `var`, leave the array temp's type as `var` too —
+        // slice 8's LocalVariableDecl var-inference will pick it up from iter
+        // (the array initializer) and the loop variable's later inference
+        // picks up the element type from $jcgoArr[$jcgoIdx].
+        Term arrType = isVarLikeType(userType) ? userType
+                : new TypeWithDims(userType,
+                        new DimSpec(Empty.newTerm()));
         Term arrDeclr = new VariableDeclarator(
                 new VariableIdentifier(new LexTerm(LexTerm.ID, aName)),
                 Empty.newTerm(), iter);
