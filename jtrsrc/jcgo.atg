@@ -252,9 +252,19 @@ ClassModifier<^Term z> (. z = Empty.term; .) =
  | "strictfp" (. z = new AccModifier(AccModifier.STRICT); .)
  | Annotation.
 
+/* "@" "interface" Identifier { swallowed body } is the annotation TYPE
+   declaration form added in Java 5 (JLS 9.6). Slice 5a parses and
+   discards the body — the AST sees an empty TypeDeclaration. Element
+   declarations (with optional `default` values) are not yet exposed;
+   that's a follow-up slice if/when JCGO needs to reflect over custom
+   annotation types. ClassModifierSeq is updated in the hand-edited
+   Parser.java to stop recursing when it sees `@` followed by `interface`,
+   so the `@` isn't consumed as the start of an annotation modifier. */
 ClassDeclOrInterfaceDecl<^Term z> (. z = Empty.term; .) =
  "class" ClassDeclaration<^z>
- | "interface" InterfaceDeclaration<^z>.
+ | "interface" InterfaceDeclaration<^z>
+ | IF (t.kind == 10 && peek(2).kind == 24)
+   "@" "interface" AnnotationTypeDeclaration<^z>.
 
 ClassDeclaration<^Term z> (. Term b, c = Empty.term, d = Empty.term, e; .) =
  Identifier<^b>

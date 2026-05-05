@@ -2593,15 +2593,40 @@ d : new PrimaryFieldAccess(a, c));
 		} else if (t.kind == 24) {
 			Get();
 			z = InterfaceDeclaration();
+		} else if (t.kind == 10 && peek(2).kind == 24) {
+			Get(); Get();
+			z = AnnotationTypeDeclaration();
 		} else Error(152);
 		return z;
+	}
+
+	// @interface body is parsed and discarded — slice 5a only widens the
+	// grammar so source files defining annotation types can parse. Element
+	// declarations (with optional `default` values) are not yet exposed to
+	// the AST; that's a follow-up slice if/when JCGO needs to reflect over
+	// custom annotation types.
+	private static Term AnnotationTypeDeclaration() {
+		Identifier();
+		Expect(28);
+		int depth = 1;
+		while (depth > 0 && t.kind != 0) {
+			if (t.kind == 28) {
+				depth++;
+			} else if (t.kind == 29) {
+				depth--;
+				if (depth == 0) break;
+			}
+			Get();
+		}
+		Expect(29);
+		return Empty.newTerm();
 	}
 
 	private static Term ClassModifierSeq() {
 		Term z;
 		Term a, b = null;
 		a = ClassModifier();
-		if (StartOf(29)) {
+		if (StartOf(29) && !(t.kind == 10 && peek(2).kind == 24)) {
 			b = ClassModifierSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2611,7 +2636,7 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassInterfaceDeclaration() {
 		Term z;
 		Term a = Empty.term, b;
-		if (StartOf(29)) {
+		if (StartOf(29) && !(t.kind == 10 && peek(2).kind == 24)) {
 			a = ClassModifierSeq();
 		}
 		b = ClassDeclOrInterfaceDecl();
