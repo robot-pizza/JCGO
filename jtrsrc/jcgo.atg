@@ -176,10 +176,17 @@ AnnotationGroup =
  Annotation
  [AnnotationGroup].
 
+/* Annotation values are parsed but currently discarded (no AST consumer).
+   To accept all JLS 9.7 forms — @Foo, @Foo(value), @Foo(name=value),
+   @Foo({a,b}), @Foo(name1=v1, name2=v2), nested @Foo(@Bar(...)) — the
+   parenthesized argument list is relaxed to "any balanced-paren content".
+   Semantic processing of annotation values is a much larger separate
+   slice. The hand-edited Parser.java implements the swallow-balanced-
+   parens loop directly; the grammar block below documents intent. */
 Annotation (. Term b; .) =
  "@"
  QualifiedIdentifier<^b>
- ["(" QualifiedIdentifierOrString<^b> ")"].
+ ["(" /* any balanced-paren token sequence */ ")"].
 
 QualifiedIdentifierOrString<^Term z> (. z = Empty.term; .) =
  STRINGLITERAL (. z = new StringLiteral(token.val); .)

@@ -2686,9 +2686,22 @@ d : new PrimaryFieldAccess(a, c));
 	private static void Annotation() {
 		Expect(10);
 		QualifiedIdentifier();
+		// Annotation values are discarded by the AST anyway; accept any
+		// balanced-paren content so all JLS 9.7 forms parse:
+		//   @Foo, @Foo(value), @Foo(name=value), @Foo({a,b}), @Foo(name={a,b}),
+		//   @Foo(name1=v1, name2=v2), @Foo(@Bar(...)), etc.
 		if (t.kind == 11) {
 			Get();
-			QualifiedIdentifierOrString();
+			int depth = 1;
+			while (depth > 0 && t.kind != 0) {
+				if (t.kind == 11) {
+					depth++;
+				} else if (t.kind == 12) {
+					depth--;
+					if (depth == 0) break;
+				}
+				Get();
+			}
 			Expect(12);
 		}
 	}
