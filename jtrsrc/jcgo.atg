@@ -628,6 +628,15 @@ DoStatement<^Term z> (. Term b, e; .) =
  ")"
  ";" (. z = new DoStatement(b, e); .).
 
+/* var local-variable type inference (Java 10, JEP 286) is handled in
+   LocalVariableDecl.processPass1: when the declaration's type term
+   resolves to the contextual keyword "var" (a QualifiedName whose
+   dottedName is "var", or a ClassOrIfaceType wrapping such), the
+   declarator's initializer is processPass1'd first and its inferred
+   ExpressionType is bound to c.typeClassDefinition / c.typeDims before
+   the rest of pass1 runs. -source 10+ gate. Single declarator with
+   initializer required. Foreach and for-init `var` are deferred. */
+
 /* The for-statement accepts both the classic 3-clause form and the
    enhanced (foreach) form added in Java 5 (JLS 14.14.2). The two
    alternatives share the leading "(" and are disambiguated by a

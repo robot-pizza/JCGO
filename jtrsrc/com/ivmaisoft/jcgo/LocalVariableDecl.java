@@ -61,6 +61,10 @@ final class LocalVariableDecl extends LexNode {
     }
 
     void processPass1(Context c) {
+        if (isVarType(terms[1]) && terms[2] == Empty.term) {
+            processVarPass1(c);
+            return;
+        }
         int oldModifiers = c.modifiers;
         c.modifiers = AccModifier.LOCALVAR;
         terms[0].processPass1(c);
@@ -74,6 +78,49 @@ final class LocalVariableDecl extends LexNode {
         } else {
             fatalError(c, "Type is expected");
         }
+        terms[3].processPass1(c);
+        c.modifiers = oldModifiers;
+    }
+
+    private static boolean isVarType(Term t) {
+        if (!t.notEmpty()) {
+            return false;
+        }
+        if (t.isName()) {
+            return "var".equals(t.dottedName());
+        }
+        if (t instanceof ClassOrIfaceType) {
+            Term inner = ((ClassOrIfaceType) t).getNameTerm();
+            return inner != null && inner.isName()
+                    && "var".equals(inner.dottedName());
+        }
+        return false;
+    }
+
+    private void processVarPass1(Context c) {
+        if (Main.dict.javaVersion < JavaVersion.JLS_100) {
+            fatalError(c,
+                    "var local-variable type inference requires -source 10 or higher (got "
+                            + JavaVersion.format(Main.dict.javaVersion) + ")");
+        }
+        if (!(terms[3] instanceof VariableDeclarator)) {
+            fatalError(c, "var requires a single declarator with an initializer");
+        }
+        VariableDeclarator vd = (VariableDeclarator) terms[3];
+        Term init = vd.terms[2];
+        if (!init.notEmpty()) {
+            fatalError(c, "var requires an initializer");
+        }
+        int oldModifiers = c.modifiers;
+        c.modifiers = AccModifier.LOCALVAR;
+        terms[0].processPass1(c);
+        init.processPass1(c);
+        ExpressionType inferred = init.exprType();
+        if (inferred == null || inferred.signatureClass() == null) {
+            fatalError(c, "var: cannot infer type from initializer");
+        }
+        c.typeClassDefinition = inferred.signatureClass();
+        c.typeDims = inferred.signatureDimensions();
         terms[3].processPass1(c);
         c.modifiers = oldModifiers;
     }

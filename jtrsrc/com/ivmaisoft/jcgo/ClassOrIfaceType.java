@@ -57,6 +57,10 @@ final class ClassOrIfaceType extends LexNode {
         nameTerm = a;
     }
 
+    Term getNameTerm() {
+        return nameTerm;
+    }
+
     ClassOrIfaceType(ClassDefinition cd) {
         assertCond(cd != null);
         this.cd = cd;

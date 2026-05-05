@@ -43,6 +43,7 @@ versions="5 7 8 9 10 11 14 15 16 17 21"
 # land, refine per file.
 prev_for_5=1.4
 prev_for_7=6
+prev_for_10=9
 
 # Whitelist of (version, classname) pairs that should ALSO be tested
 # negatively. These are fixtures known to depend on a feature gated at
@@ -51,6 +52,7 @@ prev_for_7=6
 # any level).
 neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
 neg_7="MultiCatch StringSwitch"
+neg_10="VarLocal"
 
 pass=0
 fail=0
