@@ -2452,7 +2452,12 @@ d : new PrimaryFieldAccess(a, c));
 			break;
 		}
 		case 1: case 7: {
-			z = ConstrMethodFieldDecl();
+			if (looksLikeRecord()) {
+				Get();
+				z = RecordDeclaration();
+			} else {
+				z = ConstrMethodFieldDecl();
+			}
 			break;
 		}
 		case 35: case 36: case 37: case 38: case 39: case 40: case 41: case 42: {
@@ -2637,8 +2642,47 @@ d : new PrimaryFieldAccess(a, c));
 		} else if (t.kind == 10 && peek(2).kind == 24) {
 			Get(); Get();
 			z = AnnotationTypeDeclaration();
+		} else if (looksLikeRecord()) {
+			Get();
+			z = RecordDeclaration();
 		} else Error(152);
 		return z;
+	}
+
+	// Records (Java 16): "record Identifier (".
+	private static boolean looksLikeRecord() {
+		return t.kind == 1 && "record".equals(t.val)
+			&& peek(2).kind == 1 && peek(3).kind == 11;
+	}
+
+	private static Term RecordDeclaration() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_160) {
+			SemError("record declaration requires -source 16 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Term name = Identifier();
+		Expect(11);
+		Term params = Empty.newTerm();
+		if (StartOf(21)) {
+			params = FormalParamList();
+		}
+		Expect(12);
+		Term implementsList = Empty.newTerm();
+		if (t.kind == 26) {
+			implementsList = ImplementsTypes();
+		}
+		Expect(28);
+		// User-supplied body members are allowed but not yet folded into the
+		// synthesis; consume an empty body for slice 11.
+		Expect(29);
+		Term body = RecordSynthesis.buildBody(name.dottedName(), params);
+		Term classDecl = new ClassDeclaration(name, Empty.newTerm(),
+			implementsList, body);
+		// Records are implicitly final and (when nested) implicitly static.
+		// Wrap in TypeDeclaration so the modifiers attach.
+		Term modifiers = new Seq(new AccModifier(AccModifier.STATIC),
+			new AccModifier(AccModifier.FINAL));
+		return new TypeDeclaration(modifiers, classDecl);
 	}
 
 	// @interface body is parsed and discarded — slice 5a only widens the

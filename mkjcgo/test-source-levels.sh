@@ -56,7 +56,7 @@ neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
 neg_7="MultiCatch StringSwitch"
 neg_8="DefaultIface"
 neg_10="VarLocal VarFor VarForeach"
-neg_16="PatternInstanceof"
+neg_16="PatternInstanceof Records"
 
 pass=0
 fail=0
