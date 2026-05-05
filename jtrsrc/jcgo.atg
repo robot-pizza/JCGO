@@ -337,18 +337,42 @@ FormalParamList<^Term z> (. Term a, c = null; .) =
    z = c != null ? new FormalParamList(a, c) : a;
   .).
 
+/* Formal parameters accept the varargs ellipsis (`T... id`) added in
+   Java 5. Detection is 3-token lookahead in Parser.FormalParam over
+   three consecutive `.` tokens; QualifiedIdentifier was modified to
+   stop at `..` so it doesn't eat the first `.` of an ellipsis as a
+   qualified-name continuation. The synthesized DimSpec wraps the type
+   into `T[]`; FormalParameter gains an isVarArgs flag for slice 2b
+   (call-site bundling). The version gate (-source 5+) fires in
+   FormalParameter.processPass1.
+
+   Slice 2a (Path B): grammar block below documents the production we
+   want; the actual lookahead lives in hand-edited Parser.java since
+   regen is deferred. */
 FormalParam<^Term z>
   (.
    Term a = Empty.term, b, c = Empty.term, d, e = Empty.term;
+   boolean isVarArgs = false;
   .) =
  [FinalModifier<^a>]
  [AnnotationGroup]
  SimpleType<^b>
  [DimSpecSeq<^c>]
+ [ IF (looksLikeEllipsis())
+   "." "." "."
+    (.
+     isVarArgs = true;
+     c = c == Empty.term ? (Term) new DimSpec(Empty.newTerm())
+                         : (Term) new DimSpec(c);
+    .)
+ ]
  Identifier<^d>
  [DimSpecSeq<^e>]
   (.
-   z = new FormalParameter(a, b, c, new VariableIdentifier(d), e);
+   FormalParameter fp = new FormalParameter(a, b, c,
+        new VariableIdentifier(d), e);
+   if (isVarArgs) fp.setVarArgs();
+   z = fp;
   .).
 
 FinalModifier<^Term z> =

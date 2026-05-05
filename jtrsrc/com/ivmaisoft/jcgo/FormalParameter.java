@@ -57,8 +57,18 @@ final class FormalParameter extends LexNode {
 
     private boolean isWritableArray;
 
+    private boolean isVarArgs;
+
     FormalParameter(Term a, Term b, Term c, Term d, Term e) {
         super(a, b, c, d, e);
+    }
+
+    void setVarArgs() {
+        isVarArgs = true;
+    }
+
+    boolean isVarArgs() {
+        return isVarArgs;
     }
 
     Term joinParamLists(Term paramList) {
@@ -72,6 +82,10 @@ final class FormalParameter extends LexNode {
     }
 
     void processPass1(Context c) {
+        if (isVarArgs && Main.dict.javaVersion < JavaVersion.JLS_50) {
+            fatalError(c, "varargs (T...) requires -source 5 or higher (got "
+                    + JavaVersion.format(Main.dict.javaVersion) + ")");
+        }
         int oldModifiers = c.modifiers;
         c.modifiers = AccModifier.PARAMETER;
         c.varInitializer = Empty.newTerm();

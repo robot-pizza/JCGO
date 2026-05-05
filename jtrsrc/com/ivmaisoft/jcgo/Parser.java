@@ -2170,7 +2170,8 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term FormalParam() {
 		Term z;
 		Term a = Empty.term, b, c = Empty.term, d, e = Empty.term;
-		
+		boolean isVarArgs = false;
+
 		if (t.kind == 20) {
 			a = FinalModifier();
 		}
@@ -2181,12 +2182,25 @@ d : new PrimaryFieldAccess(a, c));
 		if (t.kind == 43) {
 			c = DimSpecSeq();
 		}
+		// Varargs: `T...` = `T[]`. Synthesize one extra dim. Detection is
+		// 3-token lookahead via peek(); QualifiedIdentifier above stops at
+		// `..` so the first `.` of an ellipsis doesn't get consumed there.
+		if (t.kind == 13 && peek(2).kind == 13 && peek(3).kind == 13) {
+			Get(); Get(); Get();
+			isVarArgs = true;
+			c = (c == Empty.term)
+				? (Term) new DimSpec(Empty.newTerm())
+				: (Term) new DimSpec(c);
+		}
 		d = Identifier();
 		if (t.kind == 43) {
 			e = DimSpecSeq();
 		}
-		z = new FormalParameter(a, b, c, new VariableIdentifier(d), e);
-		
+		FormalParameter fp = new FormalParameter(a, b, c,
+				new VariableIdentifier(d), e);
+		if (isVarArgs) fp.setVarArgs();
+		z = fp;
+
 		return z;
 	}
 
@@ -2683,7 +2697,9 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, c = Empty.term;
 		a = Identifier();
-		if (t.kind == 13) {
+		// Stop at `..` so the varargs ellipsis (`...`) isn't eaten as a
+		// qualified-name continuation — the caller (FormalParam) handles it.
+		if (t.kind == 13 && peek(2).kind != 13) {
 			Get();
 			c = QualifiedIdentifier();
 		}
