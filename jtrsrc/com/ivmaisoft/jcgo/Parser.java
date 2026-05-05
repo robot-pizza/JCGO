@@ -2606,6 +2606,10 @@ d : new PrimaryFieldAccess(a, c));
 	// the AST; that's a follow-up slice if/when JCGO needs to reflect over
 	// custom annotation types.
 	private static Term AnnotationTypeDeclaration() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+			SemError("@interface (annotation type) requires -source 5 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
 		Identifier();
 		Expect(28);
 		int depth = 1;
@@ -2710,6 +2714,10 @@ d : new PrimaryFieldAccess(a, c));
 
 	private static void Annotation() {
 		Expect(10);
+		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+			SemError("annotation requires -source 5 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
 		QualifiedIdentifier();
 		// Annotation values are discarded by the AST anyway; accept any
 		// balanced-paren content so all JLS 9.7 forms parse:
