@@ -574,18 +574,48 @@ DoStatement<^Term z> (. Term b, e; .) =
  ")"
  ";" (. z = new DoStatement(b, e); .).
 
+/* The for-statement accepts both the classic 3-clause form and the
+   enhanced (foreach) form added in Java 5 (JLS 14.14.2). The two
+   alternatives share the leading "(" and are disambiguated by a
+   resolver, looksLikeForeach(), which peeks 3 tokens ahead.
+
+   Slice 1 only matches "SimpleType Identifier ':'" where SimpleType is
+   a primitive or an unqualified single-identifier class type. No
+   'final', annotations, qualified type names, or array dims on the
+   loop variable yet — widening the resolver covers those in later
+   slices. Construction:
+     new ForeachStatement(type, new VariableIdentifier(ident), iter, body)
+   The -source 5+ version gate lives in ForeachStatement.processPass1.
+
+   The looksLikeForeach() helper currently lives in the hand-edited
+   Parser.java (Path B). When the regen pipeline is set up (Path A),
+   move it into a Coco/R "-->parserglobals"-style insert so this
+   production regenerates faithfully. */
 ForStatement<^Term z>
   (.
    Term c = Empty.term, e = Empty.term, g = Empty.term, i;
+   Term ftype, fident, fiter, fbody;
   .) =
  "("
- [ForInit<^c>]
- ";"
- [JavaExpression<^e>]
- ";"
- [ExpressionList<^g>]
- ")"
- JavaStatement<^i> (. z = new ForStatement(c, e, g, i); .).
+ ( IF (looksLikeForeach())
+   SimpleType<^ftype>
+   Identifier<^fident>
+   ":"
+   JavaExpression<^fiter>
+   ")"
+   JavaStatement<^fbody>
+    (.
+     z = new ForeachStatement(ftype,
+          new VariableIdentifier(fident), fiter, fbody);
+    .)
+ | [ForInit<^c>]
+   ";"
+   [JavaExpression<^e>]
+   ";"
+   [ExpressionList<^g>]
+   ")"
+   JavaStatement<^i> (. z = new ForStatement(c, e, g, i); .)
+ ).
 
 ForInit<^Term z> (. z = Empty.term; .) =
  "final" ForFinalInit<^z>

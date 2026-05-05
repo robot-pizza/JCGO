@@ -51,11 +51,36 @@ public class Parser {
 	private static void Get() {
 		for (;;) {
 			token = t;
-			t = Scanner.Scan();
+			if (peekedCount > 0) {
+				t = peekedTokens[0];
+				for (int i = 0; i < peekedCount - 1; i++) {
+					peekedTokens[i] = peekedTokens[i + 1];
+				}
+				peekedTokens[--peekedCount] = null;
+			} else {
+				t = Scanner.Scan();
+			}
 			if (t.kind <= maxT) {errDist++; return;}
 
 			t = token;
 		}
+	}
+
+	// Multi-token lookahead extension (Path B, slice 1: foreach detection).
+	// peek(1) returns t (the standard Coco/R lookahead). peek(n) for n>=2 reads
+	// ahead non-destructively from Scanner; the buffered tokens are consumed by
+	// subsequent Get() calls so the parse state is preserved.
+	private static final Token[] peekedTokens = new Token[3];
+	private static int peekedCount = 0;
+
+	private static Token peek(int n) {
+		if (n == 1) return t;
+		while (peekedCount < n - 1) {
+			Token tk;
+			do { tk = Scanner.Scan(); } while (tk.kind > maxT);
+			peekedTokens[peekedCount++] = tk;
+		}
+		return peekedTokens[n - 2];
 	}
 
 	private static void Expect(int n) {
@@ -1597,8 +1622,22 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ForStatement() {
 		Term z;
 		Term c = Empty.term, e = Empty.term, g = Empty.term, i;
-		
+
 		Expect(11);
+		// Foreach detection (slice 1): SimpleType Identifier ':' ...
+		// Slice 1 supports only primitives or unqualified single-identifier
+		// types, no 'final', no annotations, no array dims on the loop var.
+		// The classic-for path catches everything else.
+		if (looksLikeForeach()) {
+			Term ftype = SimpleType();
+			Term fident = Identifier();
+			Expect(57);
+			Term fiter = JavaExpression();
+			Expect(12);
+			Term fbody = JavaStatement();
+			return new ForeachStatement(ftype, new VariableIdentifier(fident),
+				fiter, fbody);
+		}
 		if (StartOf(16)) {
 			c = ForInit();
 		}
@@ -1614,6 +1653,17 @@ d : new PrimaryFieldAccess(a, c));
 		i = JavaStatement();
 		z = new ForStatement(c, e, g, i);
 		return z;
+	}
+
+	// Foreach lookahead helper (slice 1).
+	private static boolean looksLikeForeach() {
+		int k1 = t.kind;
+		boolean prim = k1 >= 35 && k1 <= 42;
+		boolean ident = k1 == 1 || k1 == 7;
+		if (!prim && !ident) return false;
+		Token p2 = peek(2);
+		if (p2.kind != 1 && p2.kind != 7) return false;
+		return peek(3).kind == 57;
 	}
 
 	private static Term DoStatement() {
