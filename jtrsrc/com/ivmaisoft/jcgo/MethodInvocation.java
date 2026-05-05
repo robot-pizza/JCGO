@@ -167,6 +167,7 @@ final class MethodInvocation extends LexNode {
                 undefinedMethod(resultClass, msig, c);
                 return;
             }
+            handleVarargsBundling(c, msig);
             if (terms[0].isSuper(false)) {
                 if (md.isAbstract()) {
                     fatalError(c, "Abstract method is called: " + md.id());
@@ -211,6 +212,7 @@ final class MethodInvocation extends LexNode {
                 undefinedMethod(aclass, msig, c);
                 return;
             }
+            handleVarargsBundling(c, msig);
             assertCond(actualClass != null);
             actualMethod = md;
             if (actualType0.objectSize() != Type.NULLREF) {
@@ -241,6 +243,7 @@ final class MethodInvocation extends LexNode {
                     return;
                 }
             }
+            handleVarargsBundling(c, msig);
             if (!md.isClassMethod() && c.currentMethod != null
                     && c.currentMethod.isClassMethod()) {
                 fatalError(c,
@@ -1076,5 +1079,127 @@ final class MethodInvocation extends LexNode {
         }
         traceReflected();
         return curTraceType0;
+    }
+
+    // === Varargs call-site bundling (slice 2b, JLS 15.12.4.2) =========
+
+    private void handleVarargsBundling(Context c, MethodSignature actualMsig) {
+        if (md == null) {
+            return;
+        }
+        MethodSignature formalMsig = md.methodSignature();
+        if (!formalMsig.isVarArgs()) {
+            return;
+        }
+        int n = formalMsig.paramCount();
+        int k = actualMsig.paramCount();
+        if (k < n - 1) {
+            return;
+        }
+        boolean needBundle;
+        if (k != n) {
+            needBundle = true;
+        } else {
+            ExpressionType lastFormal = formalMsig.paramAt(n - 1);
+            ExpressionType lastActual = actualMsig.paramAt(n - 1);
+            int costAsArray = MethodSignature.matchOneParam(lastFormal,
+                    lastActual, c.forClass);
+            needBundle = (costAsArray < 0);
+        }
+        if (!needBundle) {
+            return;
+        }
+        ExpressionType varargsFormal = formalMsig.paramAt(n - 1);
+        ExpressionType elementType = varargsFormal.indirectedType();
+        if (elementType == null) {
+            return;
+        }
+        ObjVector args = new ObjVector();
+        flattenArgsInto(terms[2], args);
+        if (args.size() != k) {
+            return;
+        }
+        Term elementTypeTerm = exprTypeToTypeTerm(elementType);
+        if (elementTypeTerm == null) {
+            return;
+        }
+        Term init = buildArrInit(args, n - 1, k);
+        Term anonArr = new AnonymousArray(elementTypeTerm,
+                new DimSpec(Empty.newTerm()),
+                new ArrayInitializer(init));
+        anonArr.processPass1(c);
+        Term newArg = new Argument(anonArr);
+        newArg.processPass1(c);
+        Term tail = newArg;
+        for (int i = n - 2; i >= 0; i--) {
+            tail = new ParameterList((Term) args.elementAt(i), tail);
+        }
+        terms[2] = tail;
+    }
+
+    private static void flattenArgsInto(Term t, ObjVector out) {
+        if (!t.notEmpty()) {
+            return;
+        }
+        if (t instanceof ParameterList) {
+            ParameterList pl = (ParameterList) t;
+            flattenArgsInto(pl.terms[0], out);
+            flattenArgsInto(pl.terms[1], out);
+        } else if (t instanceof Argument) {
+            out.addElement(t);
+        }
+    }
+
+    private static Term buildArrInit(ObjVector args, int start, int end) {
+        if (start >= end) {
+            return Empty.newTerm();
+        }
+        Term first = (Term) args.elementAt(start);
+        Term firstInner = ((Argument) first).terms[0];
+        Term elem = new ArrElementInit(firstInner);
+        if (start == end - 1) {
+            return elem;
+        }
+        Term rest = buildArrInit(args, start + 1, end);
+        return new VarInitializers(elem, rest);
+    }
+
+    private static Term exprTypeToTypeTerm(ExpressionType et) {
+        int dims = et.signatureDimensions();
+        ClassDefinition cd = et.signatureClass();
+        if (cd == null) {
+            return null;
+        }
+        int sz = cd.objectSize();
+        Term base;
+        if (sz < Type.CLASSINTERFACE && sz != Type.NULLREF) {
+            base = new PrimitiveType(sz);
+        } else if (sz == Type.CLASSINTERFACE) {
+            base = new ClassOrIfaceType(qualifiedNameTerm(cd.name()));
+        } else {
+            return null;
+        }
+        if (dims > 0) {
+            Term ds = Empty.newTerm();
+            for (int i = 0; i < dims; i++) {
+                ds = new DimSpec(ds);
+            }
+            base = new TypeWithDims(base, ds);
+        }
+        return base;
+    }
+
+    private static Term qualifiedNameTerm(String name) {
+        Term qn = null;
+        int idx = name.length();
+        while (idx > 0) {
+            int prev = name.lastIndexOf('.', idx - 1);
+            String part = name.substring(prev + 1, idx);
+            Term lt = new LexTerm(LexTerm.ID, part);
+            qn = qn == null ? new QualifiedName(lt, Empty.newTerm())
+                    : new QualifiedName(lt, qn);
+            idx = prev;
+        }
+        return qn;
     }
 }

@@ -4,11 +4,12 @@ public final class Varargs
 
  public static void main(String[] args)
  {
-  int[] arr = new int[3];
-  arr[0] = 1;
-  arr[1] = 2;
-  arr[2] = 3;
-  System.out.println(sum(arr));
+  System.out.println(sum(1, 2, 3));
+  System.out.println(sum());
+  int[] explicit = new int[2];
+  explicit[0] = 10;
+  explicit[1] = 20;
+  System.out.println(sum(explicit));
  }
 
  private static int sum(int... vals)

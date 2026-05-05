@@ -167,6 +167,10 @@ final class MethodSignature {
         return sign.size();
     }
 
+    ExpressionType paramAt(int index) {
+        return (ExpressionType) sign.elementAt(index);
+    }
+
     boolean isSignEqual(ObjVector parmSig) {
         int size = sign.size();
         if (parmSig.size() != size)
@@ -186,69 +190,120 @@ final class MethodSignature {
         for (int i = 0; i < size; i++) {
             ExpressionType formal = (ExpressionType) sign.elementAt(i);
             ExpressionType actparm = (ExpressionType) msig.sign.elementAt(i);
-            ClassDefinition formalClass = formal.signatureClass();
-            ClassDefinition actparmClass = actparm.signatureClass();
-            int formalSize = formalClass.objectSize();
-            int actparmSize = actparmClass.objectSize();
-            if (formalSize != Type.CLASSINTERFACE
-                    && actparmSize != Type.CLASSINTERFACE) {
-                if (actparmSize != Type.NULLREF) {
-                    if (actparm.signatureDimensions() != formal
-                            .signatureDimensions())
-                        return -1 >>> 1;
-                    if (actparmSize == formalSize)
-                        continue;
-                    if (actparmSize > formalSize
-                            || actparmSize == Type.BOOLEAN
-                            || (actparmSize == Type.BYTE && formalSize == Type.CHAR)
-                            || (actparmSize == Type.CHAR && formalSize == Type.SHORT))
-                        return -1 >>> 1;
-                } else if (formal.signatureDimensions() == 0)
-                    return -1 >>> 1;
-                res++;
-            } else if (formalSize == Type.CLASSINTERFACE
-                    && actparmSize == Type.CLASSINTERFACE) {
-                if (actparm.signatureDimensions() != formal
-                        .signatureDimensions()) {
-                    if (!formalClass.isObjectOrCloneable())
-                        return -1 >>> 1;
-                    res += 0x100;
-                    continue;
-                }
-                if (actparmClass == formalClass)
-                    continue;
-                int depth;
-                if (formalClass.isInterface()) {
-                    depth = formalClass.getImplementedByDepth(actparmClass,
-                            forClass);
-                    if (depth > 0) {
-                        res += depth + 1;
-                        continue;
-                    }
-                }
-                if (actparmClass.isInterface()) {
-                    depth = actparmClass.getImplementedByDepth(formalClass,
-                            forClass);
-                    if (depth > 0) {
-                        res += depth + 1;
-                        continue;
-                    }
-                }
-                depth = actparmClass.getSubclassDepth(formalClass, forClass);
-                if (depth <= 0)
-                    return -1 >>> 1;
-                res += depth;
-            } else if (actparm.signatureDimensions() > 0) {
-                if (!formalClass.isObjectOrCloneable())
-                    return -1 >>> 1;
-                res += 0x100;
-            } else {
-                if (actparmSize != Type.NULLREF
-                        || formalSize != Type.CLASSINTERFACE)
-                    return -1 >>> 1;
-                res += 0x1000;
-            }
+            int cost = matchOneParam(formal, actparm, forClass);
+            if (cost < 0)
+                return -1 >>> 1;
+            res += cost;
         }
         return res;
+    }
+
+    /**
+     * Phase 3 (variable-arity) applicability test per JLS 15.12.2.4.
+     * The receiver must be varargs. Returns -1>>>1 if not applicable; else
+     * a cost prefixed with 0x10000 so fixed-arity matches always outrank
+     * varargs matches when both apply (Phase 1 / 2 vs Phase 3 ordering).
+     */
+    int matchVarargs(MethodSignature msig, ClassDefinition forClass) {
+        if (!isVarArgs || !id.equals(msig.id))
+            return -1 >>> 1;
+        int n = sign.size();
+        int k = msig.sign.size();
+        if (k < n - 1)
+            return -1 >>> 1;
+        ExpressionType varargsFormal = (ExpressionType) sign.elementAt(n - 1);
+        ExpressionType elementType = varargsFormal.indirectedType();
+        if (elementType == null)
+            return -1 >>> 1;
+        int res = 0x10000;
+        for (int i = 0; i < n - 1; i++) {
+            ExpressionType formal = (ExpressionType) sign.elementAt(i);
+            ExpressionType actparm = (ExpressionType) msig.sign.elementAt(i);
+            int cost = matchOneParam(formal, actparm, forClass);
+            if (cost < 0)
+                return -1 >>> 1;
+            res += cost;
+        }
+        // §15.12.4.2 no-bundle case: exactly k=n actuals AND the n-th actual
+        // is assignment-compatible with T[] (the array form). In that case,
+        // match the n-th actual against the array formal directly.
+        if (k == n) {
+            ExpressionType lastActual = (ExpressionType) msig.sign
+                    .elementAt(n - 1);
+            int costAsArray = matchOneParam(varargsFormal, lastActual,
+                    forClass);
+            if (costAsArray >= 0) {
+                return res + costAsArray;
+            }
+        }
+        for (int i = n - 1; i < k; i++) {
+            ExpressionType actparm = (ExpressionType) msig.sign.elementAt(i);
+            int cost = matchOneParam(elementType, actparm, forClass);
+            if (cost < 0)
+                return -1 >>> 1;
+            res += cost;
+        }
+        return res;
+    }
+
+    static int matchOneParam(ExpressionType formal,
+            ExpressionType actparm, ClassDefinition forClass) {
+        ClassDefinition formalClass = formal.signatureClass();
+        ClassDefinition actparmClass = actparm.signatureClass();
+        int formalSize = formalClass.objectSize();
+        int actparmSize = actparmClass.objectSize();
+        if (formalSize != Type.CLASSINTERFACE
+                && actparmSize != Type.CLASSINTERFACE) {
+            if (actparmSize != Type.NULLREF) {
+                if (actparm.signatureDimensions() != formal
+                        .signatureDimensions())
+                    return -1;
+                if (actparmSize == formalSize)
+                    return 0;
+                if (actparmSize > formalSize
+                        || actparmSize == Type.BOOLEAN
+                        || (actparmSize == Type.BYTE && formalSize == Type.CHAR)
+                        || (actparmSize == Type.CHAR && formalSize == Type.SHORT))
+                    return -1;
+            } else if (formal.signatureDimensions() == 0)
+                return -1;
+            return 1;
+        } else if (formalSize == Type.CLASSINTERFACE
+                && actparmSize == Type.CLASSINTERFACE) {
+            if (actparm.signatureDimensions() != formal
+                    .signatureDimensions()) {
+                if (!formalClass.isObjectOrCloneable())
+                    return -1;
+                return 0x100;
+            }
+            if (actparmClass == formalClass)
+                return 0;
+            int depth;
+            if (formalClass.isInterface()) {
+                depth = formalClass.getImplementedByDepth(actparmClass,
+                        forClass);
+                if (depth > 0)
+                    return depth + 1;
+            }
+            if (actparmClass.isInterface()) {
+                depth = actparmClass.getImplementedByDepth(formalClass,
+                        forClass);
+                if (depth > 0)
+                    return depth + 1;
+            }
+            depth = actparmClass.getSubclassDepth(formalClass, forClass);
+            if (depth <= 0)
+                return -1;
+            return depth;
+        } else if (actparm.signatureDimensions() > 0) {
+            if (!formalClass.isObjectOrCloneable())
+                return -1;
+            return 0x100;
+        } else {
+            if (actparmSize != Type.NULLREF
+                    || formalSize != Type.CLASSINTERFACE)
+                return -1;
+            return 0x1000;
+        }
     }
 }

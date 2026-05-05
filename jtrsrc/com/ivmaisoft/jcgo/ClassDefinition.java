@@ -3141,6 +3141,25 @@ final class ClassDefinition extends ExpressionType {
                 cd = cd.superClass();
             } while (cd != null);
         }
+        if (bestMethod == null) {
+            int lowestMatch = -1 >>> 1;
+            ClassDefinition cd = this;
+            do {
+                Enumeration en = cd.methodDictionary().keys();
+                while (en.hasMoreElements()) {
+                    MethodDefinition md2 = getMethod((String) en.nextElement());
+                    if (md2 != null && md2.methodSignature().isVarArgs()) {
+                        int value = md2.methodSignature().matchVarargs(msig,
+                                forClass);
+                        if (value < lowestMatch) {
+                            lowestMatch = value;
+                            bestMethod = md2;
+                        }
+                    }
+                }
+                cd = cd.superClass();
+            } while (cd != null);
+        }
         return bestMethod;
     }
 
