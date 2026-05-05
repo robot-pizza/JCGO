@@ -238,6 +238,21 @@ final class MethodInvocation extends LexNode {
                 }
                 resultClass = resultClass.outerClass();
                 if (resultClass == null) {
+                    // Slice 3b: try static-imported owners for unqualified
+                    // method calls.
+                    ClassDefinition siClass = c
+                            .resolveStaticImportMethodOwner(id);
+                    if (siClass != null) {
+                        siClass.define(c.forClass);
+                        md = siClass.matchMethod(msig, c.forClass);
+                        if (md != null && md.isClassMethod()) {
+                            siClass.markUsed();
+                            resultClass = siClass;
+                            resultString = This.CNAME;
+                            break;
+                        }
+                        md = null;
+                    }
                     undefinedMethod(c.currentClass, msig, c);
                     resultClass = c.currentClass;
                     return;

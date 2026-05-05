@@ -201,12 +201,12 @@ ImportDeclarationSeq<^Term z> (. Term a, b = null; .) =
  [ImportDeclarationSeq<^b>] (. z = b != null ? new Seq(a, b) : a; .).
 
 /* Imports accept the optional "static" keyword added in Java 5
-   (JLS 7.5.3 / 7.5.4). Static imports are parsed and version-gated;
-   actual resolution of unqualified static-imported names is deferred
-   to a follow-up slice. processPass0 records the version error if
-   -source < 5; otherwise the static import is accepted but currently
-   not stored in the import buckets, so unqualified references to
-   imported members won't yet bind. */
+   (JLS 7.5.3 / 7.5.4). Slice 3b adds resolution: Context tracks
+   single-static and on-demand-static buckets, ImportDeclaration
+   processPass0 populates them, and QualifiedName.processPass1 plus
+   MethodInvocation.processPass1 fall back to static-import lookup
+   after the outer-class walk fails. Wildcard form ("X.*") and the
+   single-member form ("X.member") both resolve. */
 ImportDeclaration<^Term z> (. Term b; boolean isStatic = false; .) =
  "import"
  ["static" (. isStatic = true; .)]

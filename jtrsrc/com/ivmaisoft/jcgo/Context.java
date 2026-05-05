@@ -48,6 +48,10 @@ final class Context {
 
     String fileName;
 
+    private/* final */OrderedMap staticImportsSingle;
+
+    private/* final */ObjQueue staticImportsOnDemand;
+
     private/* final */ObjQueue importsSingle;
 
     private/* final */ObjQueue importsOnDemand;
@@ -111,11 +115,16 @@ final class Context {
     Context() {
         importsSingle = new ObjQueue();
         importsOnDemand = new ObjQueue();
+        staticImportsSingle = new OrderedMap();
+        staticImportsOnDemand = new ObjQueue();
     }
 
-    private Context(ObjQueue importsSingle, ObjQueue importsOnDemand) {
+    private Context(ObjQueue importsSingle, ObjQueue importsOnDemand,
+            OrderedMap staticImportsSingle, ObjQueue staticImportsOnDemand) {
         this.importsSingle = importsSingle;
         this.importsOnDemand = importsOnDemand;
+        this.staticImportsSingle = staticImportsSingle;
+        this.staticImportsOnDemand = staticImportsOnDemand;
     }
 
     void addImport(String name) {
@@ -126,8 +135,80 @@ final class Context {
         }
     }
 
+    /**
+     * Adds a static import. Wildcard form ("X.*") stores the class name X;
+     * single form ("X.member") stores member -> X for direct lookup.
+     */
+    void addStaticImport(String name) {
+        if (name.endsWith(".*")) {
+            staticImportsOnDemand.addLast(name.substring(0,
+                    name.length() - 2));
+            return;
+        }
+        int dot = name.lastIndexOf('.');
+        if (dot <= 0 || dot >= name.length() - 1) {
+            return;
+        }
+        String memberName = name.substring(dot + 1);
+        String className = name.substring(0, dot);
+        if (staticImportsSingle.get(memberName) == null) {
+            staticImportsSingle.put(memberName, className);
+        }
+    }
+
+    /**
+     * Resolves an unqualified identifier against static imports. Returns
+     * the owning ClassDefinition if the member is found, else null. Looks
+     * at single-imports first (definite match), then wildcard classes.
+     */
+    ClassDefinition resolveStaticImportFieldOwner(String memberName,
+            ClassDefinition forClass) {
+        String singleClassName = (String) staticImportsSingle.get(memberName);
+        if (singleClassName != null) {
+            ClassDefinition cd = Main.dict.get(singleClassName);
+            if (cd != null && cd.getField(memberName, forClass) != null) {
+                return cd;
+            }
+        }
+        java.util.Enumeration en = staticImportsOnDemand.elements();
+        while (en.hasMoreElements()) {
+            String className = (String) en.nextElement();
+            ClassDefinition cd = Main.dict.get(className);
+            if (cd != null && cd.getField(memberName, forClass) != null) {
+                return cd;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Resolves an unqualified method id against static imports. Returns
+     * the owning ClassDefinition if any of the import targets has a method
+     * by that name, else null. Caller is responsible for the actual
+     * matchMethod step on the returned class.
+     */
+    ClassDefinition resolveStaticImportMethodOwner(String methodName) {
+        String singleClassName = (String) staticImportsSingle.get(methodName);
+        if (singleClassName != null) {
+            ClassDefinition cd = Main.dict.get(singleClassName);
+            if (cd != null && cd.hasMethodNamed(methodName)) {
+                return cd;
+            }
+        }
+        java.util.Enumeration en = staticImportsOnDemand.elements();
+        while (en.hasMoreElements()) {
+            String className = (String) en.nextElement();
+            ClassDefinition cd = Main.dict.get(className);
+            if (cd != null && cd.hasMethodNamed(methodName)) {
+                return cd;
+            }
+        }
+        return null;
+    }
+
     Context cloneForClass(ClassDefinition classDefn, ClassDefinition forClass) {
-        Context context = new Context(importsSingle, importsOnDemand);
+        Context context = new Context(importsSingle, importsOnDemand,
+                staticImportsSingle, staticImportsOnDemand);
         context.fileName = fileName;
         context.packageName = packageName;
         context.currentClass = classDefn;

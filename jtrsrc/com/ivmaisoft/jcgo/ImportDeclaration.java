@@ -67,6 +67,7 @@ final class ImportDeclaration extends LexNode {
                         "static import requires -source 5 or higher (got "
                         + JavaVersion.format(Main.dict.javaVersion) + ")");
             }
+            c.addStaticImport(terms[0].dottedName());
             return;
         }
         c.addImport(terms[0].dottedName());

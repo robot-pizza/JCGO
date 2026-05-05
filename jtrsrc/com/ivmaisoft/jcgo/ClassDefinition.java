@@ -3119,6 +3119,17 @@ final class ClassDefinition extends ExpressionType {
         return pkgNameList.size() - pkgNameList.indexOf(ourPkgName) - 1;
     }
 
+    boolean hasMethodNamed(String methodName) {
+        Enumeration en = methodDictionary().keys();
+        while (en.hasMoreElements()) {
+            MethodDefinition md = getMethod((String) en.nextElement());
+            if (md != null && methodName.equals(md.id())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     MethodDefinition matchMethod(MethodSignature msig, ClassDefinition forClass) {
         define(forClass);
         Term.assertCond(definePassOneDone);

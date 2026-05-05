@@ -1,13 +1,15 @@
 
 import static java.lang.Math.PI;
+import static java.lang.Math.sqrt;
+import static java.lang.Integer.MAX_VALUE;
 
 public final class StaticImport
 {
 
  public static void main(String[] args)
  {
-  // Slice 3a accepts the syntax but does not yet resolve unqualified
-  // statically-imported names — qualified Math.PI works regardless.
-  System.out.println(Math.PI);
+  System.out.println(PI);
+  System.out.println(sqrt(2.0));
+  System.out.println(MAX_VALUE);
  }
 }

@@ -168,6 +168,23 @@ final class QualifiedName extends LexNode {
                         }
                         cd = cd.outerClass();
                         if (cd == null) {
+                            // Slice 3b: try static-imported owners.
+                            ClassDefinition siClass = c
+                                    .resolveStaticImportFieldOwner(name,
+                                            c.forClass);
+                            if (siClass != null) {
+                                siClass.define(c.forClass);
+                                v = siClass.getField(name, c.forClass);
+                                if (v != null && v.isClassVariable()) {
+                                    while (resultFields.size() > 0) {
+                                        resultFields.removeElementAt(
+                                                resultFields.size() - 1);
+                                    }
+                                    siClass.markUsed();
+                                    break;
+                                }
+                                v = null;
+                            }
                             fatalError(c, "Undefined variable: " + name);
                             setUndefined();
                             return;
