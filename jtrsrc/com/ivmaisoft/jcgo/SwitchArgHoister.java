@@ -94,9 +94,7 @@ final class SwitchArgHoister {
         for (int i = 0; i < children.length; i++) {
             Term child = children[i];
             // Direct SwitchExpression child — hoist.
-            if (child instanceof SwitchExpression
-                    && !SwitchExpressionLifter.anyPatternCases(
-                            (SwitchExpression) child)) {
+            if (child instanceof SwitchExpression) {
                 children[i] = hoistOne((SwitchExpression) child, preambles);
                 continue;
             }
@@ -113,6 +111,16 @@ final class SwitchArgHoister {
                         new VariableIdentifier(
                                 new LexTerm(LexTerm.ID, tempName)),
                         Empty.newTerm(), Empty.newTerm())));
+        // Slice 41: route pattern-switch arms through the $matched-flag
+        // chain instead of buildSwitchStmt (which only handles
+        // constant case labels).
+        if (SwitchExpressionLifter.anyPatternCases(se)) {
+            Term patternBody = SwitchExpressionLifter
+                    .buildPatternSwitchStmts(se, tempName, decl);
+            preambles.addElement(patternBody);
+            return new Expression(new QualifiedName(
+                    new LexTerm(LexTerm.ID, tempName), Empty.newTerm()));
+        }
         Term switchStmt = SwitchExpressionLifter.buildSwitchStmt(se,
                 tempName);
         preambles.addElement(decl);

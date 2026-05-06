@@ -806,7 +806,16 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term UnaryWithPara() {
 		Term z;
 		Term b, d = null;
-		b = JavaExpression();
+		// Slice 41: parenthesized switch expression — `(switch(...){...})`.
+		// Used as a grouping wrapper around a switch when it appears
+		// inline in larger expressions (e.g. `"x" + (switch ...) + "y"`).
+		// The hoister at the surrounding statement level still picks up
+		// the inner SwitchExpression through the ParenExpression wrapper.
+		if (t.kind == 53) {
+			b = SwitchExpressionParse();
+		} else {
+			b = JavaExpression();
+		}
 		Expect(12);
 		// Slice 38: also enter the cast-tail dispatcher when a `switch`
 		// follows `(Type)` — `(long) switch (...) {...}`. The tail
