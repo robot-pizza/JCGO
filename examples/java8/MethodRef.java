@@ -1,6 +1,8 @@
-// Method references (Java 8, JLS 15.13). Slice 23c handles
-// `Integer::parseInt` and `Foo::new`; slice 24c grew the parser to
-// also accept dotted-id receivers like `System.out::println`.
+// Method references (Java 8, JLS 15.13). Covered: bound-instance and
+// static (`Integer::parseInt`), constructor (`Foo::new`), dotted-id
+// receivers (`System.out::println`), and unbound-instance refs where
+// the SAM's first param becomes the receiver (`Box::get` for
+// `Function<Box, Integer>`-shape SAMs).
 
 public final class MethodRef
 {
@@ -20,6 +22,12 @@ public final class MethodRef
   void accept(java.lang.Object x);
  }
 
+ // Slice 24f: SAM where the first param is the receiver target.
+ interface BoxGetter
+ {
+  int get(Box b);
+ }
+
  static final class Box
  {
   final int v;
@@ -37,9 +45,12 @@ public final class MethodRef
   Box b = m.make(7);
   System.out.println(b.get());
 
-  // Dotted-id receiver — `System.out` resolves at pass1 the same way
-  // a qualified static field reference does.
   Sink s = System.out::println;
   s.accept("dotted-receiver");
+
+  // Unbound-instance method ref — `b` is supplied as the receiver
+  // by the SAM's first argument at call time.
+  BoxGetter getter = Box::get;
+  System.out.println(getter.get(b));
  }
 }

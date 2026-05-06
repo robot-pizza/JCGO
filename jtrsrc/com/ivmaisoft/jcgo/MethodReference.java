@@ -93,7 +93,8 @@ final class MethodReference extends LexNode {
                     ? new Seq(lt, lambdaParams) : lt;
         }
 
-        Term body = buildBody(paramNames, sam);
+        boolean unbound = !isCtor && detectUnboundInstance(sam, c);
+        Term body = buildBody(paramNames, sam, unbound);
         Term classBody = LambdaSynthesis.buildClassBody(sam, lambdaParams,
                 body, false);
 
@@ -103,7 +104,26 @@ final class MethodReference extends LexNode {
         lifted.processPass1(c);
     }
 
-    private Term buildBody(ObjVector paramNames, MethodDefinition sam) {
+    private Term buildBody(ObjVector paramNames, MethodDefinition sam,
+            boolean unbound) {
+        int n = paramNames.size();
+        if (unbound) {
+            // `Class::instanceMethod` — first SAM param becomes the
+            // receiver, the rest pass straight through. SAM has at
+            // least one param (caller validated).
+            Term receiverExpr = new Expression(new QualifiedName(
+                    new LexTerm(LexTerm.ID, "$mr$0"), Empty.newTerm()));
+            Term args = Empty.newTerm();
+            for (int i = n - 1; i >= 1; i--) {
+                Term argRef = new Argument(new Expression(new QualifiedName(
+                        new LexTerm(LexTerm.ID, "$mr$" + i),
+                        Empty.newTerm())));
+                args = args.notEmpty()
+                        ? new ParameterList(argRef, args) : argRef;
+            }
+            return new MethodInvocation(receiverExpr,
+                    new LexTerm(LexTerm.ID, methodName), args);
+        }
         Term args = Empty.newTerm();
         for (int i = paramNames.size() - 1; i >= 0; i--) {
             String pname = (String) paramNames.elementAt(i);
@@ -128,6 +148,51 @@ final class MethodReference extends LexNode {
         Term receiverPath = unwrapToQualifiedName(terms[0]);
         Term combined = appendQualifiedSegment(receiverPath, methodName);
         return new MethodInvocation(combined, Empty.newTerm(), args);
+    }
+
+    /**
+     * Slice 24f: an unbound-instance reference (`String::length` for
+     * `Function<String, Integer>`) is detected by:
+     *   - receiver dotted name resolves to a class
+     *   - that class declares an INSTANCE method named `methodName`
+     *     whose arity equals SAM arity minus one (the missing param
+     *     is the receiver, supplied by SAM's first arg)
+     * Returns false if any of those checks fail — caller falls back
+     * to the bound/static `Receiver.method(args)` body shape.
+     */
+    private boolean detectUnboundInstance(MethodDefinition sam, Context c) {
+        int samArity = sam.methodSignature().paramCount();
+        if (samArity < 1) return false;
+        Term qn = unwrapToQualifiedName(terms[0]);
+        String dotted = qn.dottedName();
+        if (dotted == null) return false;
+        // Restrict to single-identifier receivers — `System.out::println`
+        // and friends are almost always bound-instance refs through a
+        // field access, and JCGO's resolveClass actively tries to LOAD
+        // a `System.out` class file for dotted names, which crashes the
+        // build. Single-id receivers like `Box`, `String`, `Integer`
+        // are the cases that actually want unbound-instance handling.
+        if (dotted.indexOf('.') >= 0) return false;
+        ClassDefinition rcvCls;
+        try {
+            rcvCls = c.resolveClass(dotted, true, false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+        if (rcvCls == null) return false;
+        rcvCls.define(c.forClass);
+        java.util.Enumeration en = rcvCls.enumerateMethodSignatures();
+        while (en.hasMoreElements()) {
+            String sig = (String) en.nextElement();
+            MethodDefinition md = rcvCls.getMethodNoInheritance(sig);
+            if (md == null) continue;
+            if (md.isClassMethod()) continue;
+            if (!methodName.equals(md.id())) continue;
+            if (md.methodSignature().paramCount() == samArity - 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Term unwrapToTypeTerm(Term receiver) {
