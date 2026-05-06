@@ -74,6 +74,12 @@ public final class Lambda
   System.out.println(add.apply(2, 3));
   System.out.println(mul.apply(4, 5));
 
+  // Slice 25: typed lambda parameters. The declared types are
+  // consumed and the SAM's formal types win — but the parser
+  // accepts the user's annotation.
+  IntBinaryOp sub = (int a, int b) -> a - b;
+  System.out.println(sub.apply(10, 3));
+
   IntOp adder = constOp();
   System.out.println(adder.apply(5));
 

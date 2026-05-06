@@ -2566,12 +2566,13 @@ d : new PrimaryFieldAccess(a, c));
 		return new MethodReference(receiver, methodName, isCtor);
 	}
 
-	// Slice 23 (Java 8): lambda detection.
-	//   id -> body            (3-token peek)
-	//   () -> body            (4-token peek)
-	//   (id, id, ...) -> body (variable-depth peek; slice 23b grew peek
-	//                          to handle this — we walk past the
-	//                          matching `)` then check for `->`)
+	// Slice 23 / 25: lambda detection.
+	//   id -> body                            (3-token peek)
+	//   () -> body                            (4-token peek)
+	//   (anything) -> body                    (variable-depth peek)
+	// The (anything) form covers untyped params `(a, b)`, typed params
+	// `(int x, String s)`, and var-typed params `(var x)` — anything
+	// the LambdaParse param parser is willing to consume.
 	private static boolean looksLikeLambda() {
 		if (t.kind == 11 && peek(2).kind == 12 && peek(3).kind == 67
 				&& peek(4).kind == 75) {
@@ -2580,23 +2581,23 @@ d : new PrimaryFieldAccess(a, c));
 		if (t.kind == 1 && peek(2).kind == 67 && peek(3).kind == 75) {
 			return true;
 		}
-		if (t.kind == 11 && peek(2).kind == 1) {
-			// Look for `(id, id, ...)` followed by `->`.
-			int idx = 3;
-			while (true) {
+		if (t.kind == 11) {
+			// Walk balanced parens to find the matching `)`, then check
+			// the two tokens after it for `->`.
+			int idx = 2;
+			int depth = 1;
+			while (depth > 0) {
 				Token tk = peek(idx);
 				if (tk == null || tk.kind == 0) return false;
-				if (tk.kind == 27) { // `,`
-					if (peek(idx + 1).kind != 1) return false;
-					idx += 2;
-					continue;
-				}
-				if (tk.kind == 12) { // `)`
-					return peek(idx + 1).kind == 67
-						&& peek(idx + 2).kind == 75;
-				}
-				return false;
+				if (tk.kind == 11) depth++;
+				else if (tk.kind == 12) depth--;
+				// Bail at statement-level boundaries — avoids burning
+				// peek depth scanning through arbitrary code.
+				else if (tk.kind == 28 || tk.kind == 9) return false;
+				idx++;
+				if (idx > 256) return false;
 			}
+			return peek(idx).kind == 67 && peek(idx + 1).kind == 75;
 		}
 		return false;
 	}
@@ -2613,16 +2614,10 @@ d : new PrimaryFieldAccess(a, c));
 				params = Empty.newTerm();
 			} else {
 				ObjVector ids = new ObjVector();
-				ids.addElement(new LexTerm(LexTerm.ID, t.val));
-				Get();
+				parseLambdaParam(ids);
 				while (t.kind == 27) {
 					Get();
-					if (t.kind != 1) {
-						SemError("expected lambda parameter identifier");
-						break;
-					}
-					ids.addElement(new LexTerm(LexTerm.ID, t.val));
-					Get();
+					parseLambdaParam(ids);
 				}
 				params = Empty.newTerm();
 				for (int i = ids.size() - 1; i >= 0; i--) {
@@ -2647,6 +2642,75 @@ d : new PrimaryFieldAccess(a, c));
 			body = JavaExpression();
 		}
 		return new LambdaExpression(params, body, bodyIsBlock);
+	}
+
+	// Slice 25/26: parse one lambda parameter into `ids`. Forms:
+	//   id              — untyped, type comes from SAM
+	//   Type id         — explicit typed (Type erased to whatever
+	//                     SimpleType produces; the lifter still uses
+	//                     SAM's formal type)
+	//   var id          — Java 11 `var` lambda param (slice 26 will
+	//                     gate this at JLS 11)
+	// The user-supplied type is consumed and discarded — JCGO's lambda
+	// synthesis uses the SAM parameter type unconditionally so the
+	// signature matches the functional interface.
+	private static void parseLambdaParam(ObjVector ids) {
+		boolean isVar = t.kind == 1 && "var".equals(t.val)
+			&& peek(2).kind == 1;
+		if (isVar) {
+			if (Main.dict.javaVersion < JavaVersion.JLS_110) {
+				SemError("var in lambda parameter requires -source 11 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			Get();  // consume `var`
+		} else if (isLambdaParamTyped()) {
+			SimpleType();
+			// SimpleType doesn't consume `[]` dims — accept them too.
+			if (t.kind == 43) DimSpecSeq();
+		}
+		if (t.kind != 1) {
+			SemError("expected lambda parameter identifier");
+			return;
+		}
+		ids.addElement(new LexTerm(LexTerm.ID, t.val));
+		Get();
+	}
+
+	private static boolean isLambdaParamTyped() {
+		// Primitive type keyword is unambiguous.
+		if (t.kind >= 35 && t.kind <= 42) return true;
+		// Identifier could be either a type or the param name itself.
+		// Disambiguate: if the next token is `,` or `)`, treat as bare
+		// param name (untyped); otherwise it's a type followed by name.
+		if (t.kind == 1) {
+			int idx = 2;
+			// Walk past dotted qualifier (`java.util.List`).
+			while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+				idx += 2;
+			}
+			// Skip `<...>` generic args.
+			if (peek(idx).kind == 73) {
+				int depth = 1;
+				idx++;
+				while (depth > 0) {
+					int k = peek(idx).kind;
+					if (k == 0) return false;
+					if (k == 73) depth++;
+					else if (k == 75) depth--;
+					else if (k == 70) depth -= 2;
+					else if (k == 69) depth -= 3;
+					idx++;
+					if (idx > 256) return false;
+				}
+			}
+			// Skip `[]` array dims.
+			while (peek(idx).kind == 43 && peek(idx + 1).kind == 44) {
+				idx += 2;
+			}
+			int next = peek(idx).kind;
+			return next == 1; // identifier follows → type+id form
+		}
+		return false;
 	}
 
 	private static Term FieldDeclTail(Term a, Term b, Term c) {
