@@ -309,10 +309,38 @@ final class MethodSignature {
                 return -1;
             return 0x100;
         } else {
-            if (actparmSize != Type.NULLREF
-                    || formalSize != Type.CLASSINTERFACE)
-                return -1;
-            return 0x1000;
+            if (actparmSize == Type.NULLREF
+                    && formalSize == Type.CLASSINTERFACE) {
+                return 0x1000;
+            }
+            // Slice 18b: autobox/unbox compatibility for overload
+            // resolution. Cost 0x4000 — placed above primitive widening
+            // (0..N) and reference upcasts (0x100..0xFFF) so direct
+            // matches are preferred when both apply, but below the
+            // null→ref special case (0x1000) and the varargs phase
+            // (0x10000) so autobox still beats a varargs fallback.
+            if (Main.dict.javaVersion >= JavaVersion.JLS_50) {
+                if (formalSize == Type.CLASSINTERFACE
+                        && Autobox.isPrimitive(actparmSize)
+                        && formal.signatureDimensions() == 0) {
+                    ClassDefinition wrapperCd = Autobox
+                            .wrapperClassFor(actparmSize);
+                    if (wrapperCd != null
+                            && formalClass.isAssignableFrom(wrapperCd, 0,
+                                    forClass)) {
+                        return 0x4000;
+                    }
+                } else if (actparmSize == Type.CLASSINTERFACE
+                        && Autobox.isPrimitive(formalSize)
+                        && formal.signatureDimensions() == 0) {
+                    int wrapperPrim = Autobox
+                            .wrapperPrimitiveFor(actparmClass);
+                    if (wrapperPrim == formalSize) {
+                        return 0x4000;
+                    }
+                }
+            }
+            return -1;
         }
     }
 }

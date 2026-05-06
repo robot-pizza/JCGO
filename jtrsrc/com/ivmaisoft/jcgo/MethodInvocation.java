@@ -176,6 +176,7 @@ final class MethodInvocation extends LexNode {
                 undefinedMethod(resultClass, msig, c);
                 return;
             }
+            applyArgAutobox(c);
             handleVarargsBundling(c, msig);
             if (terms[0].isSuper(false)) {
                 if (md.isAbstract()) {
@@ -221,6 +222,7 @@ final class MethodInvocation extends LexNode {
                 undefinedMethod(aclass, msig, c);
                 return;
             }
+            applyArgAutobox(c);
             handleVarargsBundling(c, msig);
             assertCond(actualClass != null);
             actualMethod = md;
@@ -267,6 +269,7 @@ final class MethodInvocation extends LexNode {
                     return;
                 }
             }
+            applyArgAutobox(c);
             handleVarargsBundling(c, msig);
             if (!md.isClassMethod() && c.currentMethod != null
                     && c.currentMethod.isClassMethod()) {
@@ -1106,6 +1109,61 @@ final class MethodInvocation extends LexNode {
     }
 
     // === Varargs call-site bundling (slice 2b, JLS 15.12.4.2) =========
+
+    /**
+     * Slice 18b (Java 5): after a successful matchMethod, walk the
+     * argument chain and insert autobox/unbox conversions wherever a
+     * primitive arg matched a wrapper formal (or vice versa). The
+     * relaxed matchOneParam in MethodSignature lets such matches succeed
+     * with cost 0x4000; this method makes the conversion concrete.
+     *
+     * For varargs methods we autobox the fixed-arity prefix only —
+     * conversion of the varargs trailing args (or pre-bundled array
+     * elements) is left to a follow-up; common JDK calls like
+     * println(Object) fall in the fixed-arity prefix.
+     */
+    private void applyArgAutobox(Context c) {
+        if (md == null) return;
+        if (Main.dict.javaVersion < JavaVersion.JLS_50) return;
+        MethodSignature formalMsig = md.methodSignature();
+        int n = formalMsig.paramCount();
+        boolean isVarArgs = formalMsig.isVarArgs();
+        int fixedCount = isVarArgs ? n - 1 : n;
+        for (int i = 0; i < fixedCount; i++) {
+            ExpressionType formal = formalMsig.paramAt(i);
+            Argument arg = findArgumentNode(terms[2], i);
+            if (arg == null) continue;
+            Term inner = arg.terms[0];
+            int srcSize = inner.exprType().objectSize();
+            int dstSize = formal.objectSize();
+            // Only convert if a primitive↔reference bridge is needed.
+            if ((dstSize >= Type.CLASSINTERFACE && Autobox.isPrimitive(srcSize))
+                    || (Autobox.isPrimitive(dstSize)
+                            && srcSize >= Type.CLASSINTERFACE
+                            && Autobox.wrapperPrimitiveFor(
+                                    inner.exprType().receiverClass()) >= 0)) {
+                Term coerced = Autobox.coerce(c, inner, dstSize);
+                if (coerced != inner) {
+                    arg.replaceArgTermAndRefresh(coerced);
+                }
+            }
+        }
+    }
+
+    private static Argument findArgumentNode(Term t, int index) {
+        Term cur = t;
+        int i = 0;
+        while (cur instanceof ParameterList) {
+            if (i == index) {
+                Term head = ((ParameterList) cur).terms[0];
+                return head instanceof Argument ? (Argument) head : null;
+            }
+            cur = ((ParameterList) cur).terms[1];
+            i++;
+        }
+        if (cur instanceof Argument && i == index) return (Argument) cur;
+        return null;
+    }
 
     private void handleVarargsBundling(Context c, MethodSignature actualMsig) {
         if (md == null) {

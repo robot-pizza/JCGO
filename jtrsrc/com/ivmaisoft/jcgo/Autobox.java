@@ -80,8 +80,36 @@ final class Autobox {
         return unbox(c, expr, wrapperPrim);
     }
 
-    private static boolean isPrimitive(int size) {
+    static boolean isPrimitive(int size) {
         return size >= Type.BOOLEAN && size <= Type.DOUBLE;
+    }
+
+    /**
+     * Slice 18b: returns the primitive size that the given wrapper class
+     * unboxes to, or -1 if it isn't a known wrapper. Used by overload
+     * resolution to recognize primitive ↔ wrapper compatibility.
+     */
+    static int wrapperPrimitiveFor(ClassDefinition cd) {
+        if (cd == null) return -1;
+        String name = cd.name();
+        if (Names.JAVA_LANG_BOOLEAN.equals(name)) return Type.BOOLEAN;
+        if (Names.JAVA_LANG_BYTE.equals(name)) return Type.BYTE;
+        if (Names.JAVA_LANG_CHARACTER.equals(name)) return Type.CHAR;
+        if (Names.JAVA_LANG_SHORT.equals(name)) return Type.SHORT;
+        if (Names.JAVA_LANG_INTEGER.equals(name)) return Type.INT;
+        if (Names.JAVA_LANG_LONG.equals(name)) return Type.LONG;
+        if (Names.JAVA_LANG_FLOAT.equals(name)) return Type.FLOAT;
+        if (Names.JAVA_LANG_DOUBLE.equals(name)) return Type.DOUBLE;
+        return -1;
+    }
+
+    /**
+     * Slice 18b: returns the wrapper ClassDefinition for a primitive
+     * size, or null if size is not a primitive.
+     */
+    static ClassDefinition wrapperClassFor(int primSize) {
+        String name = wrapperNameForPrimitive(primSize);
+        return name != null ? Main.dict.get(name) : null;
     }
 
     private static Term box(Context c, Term primitive, int primSize) {

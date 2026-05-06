@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -102,6 +111,17 @@ final class Argument extends LexNode {
     private void processPassOneInner() {
         exprType0 = terms[0].exprType();
         actualType0 = terms[0].actualExprType();
+    }
+
+    /**
+     * Slice 18b: invoked after replacing terms[0] with an autoboxed
+     * version (a MethodInvocation around the original arg). Refreshes
+     * cached exprType0/actualType0 so downstream consumers see the
+     * post-conversion type.
+     */
+    void replaceArgTermAndRefresh(Term newTerm) {
+        terms[0] = newTerm;
+        processPassOneInner();
     }
 
     void setFormalType(Term formalParam, MethodDefinition md, Context c) {
