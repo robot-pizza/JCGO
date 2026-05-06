@@ -1987,7 +1987,21 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	// Each resource: [final] Type Identifier = Expression
+	// Java 9 (slice 27) also accepts an existing effectively-final
+	// variable as the resource — `try (existingVar; ...) { ... }`.
+	// Detection: bare identifier followed by `;` or `)` (no `=`).
 	private static Term parseTwrResource() {
+		if (t.kind == 1 && (peek(2).kind == 9 || peek(2).kind == 12)) {
+			if (Main.dict.javaVersion < JavaVersion.JLS_90) {
+				SemError("try-with-resources on an existing variable "
+					+ "requires -source 9 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			String name = t.val;
+			Get();
+			return new ExprStatement(new Expression(new QualifiedName(
+				new LexTerm(LexTerm.ID, name), Empty.newTerm())));
+		}
 		boolean isFinal = false;
 		if (t.kind == 20) {
 			Get();
@@ -2024,18 +2038,33 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		Term finallyBlock = new Block(closeSeq);
 		Term wrappedTry = new TryStatement(tryBody, finallyBlock);
-		// Wrap resources + try in a Block.
+		// Wrap resources + try in a Block. Existing-variable resources
+		// (Java 9 slice 27) skip the prelude — the variable is already
+		// in scope and re-emitting `varName;` would just be a useless
+		// expression statement.
 		Term blockSeq = wrappedTry;
 		for (int i = resources.size() - 1; i >= 0; i--) {
 			Term resource = (Term) resources.elementAt(i);
+			if (isTwrExistingVarResource(resource)) continue;
 			blockSeq = new Seq(resource, blockSeq);
 		}
 		return new Block(blockSeq);
 	}
 
+	private static boolean isTwrExistingVarResource(Term resourceStmt) {
+		if (!(resourceStmt instanceof ExprStatement)) return false;
+		Term inner = ((ExprStatement) resourceStmt).terms[0];
+		return inner instanceof Expression;
+	}
+
 	private static String extractTwrResourceName(Term resourceStmt) {
 		if (resourceStmt instanceof ExprStatement) {
 			Term inner = ((ExprStatement) resourceStmt).terms[0];
+			// Java 9 existing-variable form: ExprStatement(Expression(QN)).
+			if (inner instanceof Expression) {
+				Term qn = ((Expression) inner).terms[0];
+				if (qn != null) return qn.dottedName();
+			}
 			if (inner instanceof LocalVariableDecl) {
 				LocalVariableDecl lvd = (LocalVariableDecl) inner;
 				Term decl = lvd.terms[3];
