@@ -411,6 +411,16 @@ new DimSpec(c)));
 			z = SuperConstrMethodAccess(new Expression(a));
 		} else if (t.kind == 23 || t.kind == 102 || t.kind == 103) {
 			z = UnaryWithIdentDotInstanceTail(a);
+		} else if (t.kind == 73) {
+			// Slice 30: explicit type-witness invocation —
+			// `Foo.<String>method(args)`. Consume + erase, then
+			// continue as if the `.id` came directly.
+			consumeGenericArgs();
+			if (t.kind != 1 && t.kind != 7) {
+				Error(113);
+				return Empty.newTerm();
+			}
+			z = UnaryWithIdentQualified(a);
 		} else if (t.kind == 1 || t.kind == 7) {
 			z = UnaryWithIdentQualified(a);
 		} else Error(113);
@@ -532,6 +542,17 @@ new DimSpec(c)));
 		} else if (t.kind == 101) {
 			Get();
 			z = InnerSuperConstrInvocation(a);
+		} else if (t.kind == 73) {
+			// Slice 30: generic method type-witness — `Foo.<T>bar(args)`.
+			// Consume + erase the type arguments, then continue as a
+			// regular field/method invocation on the identifier that
+			// follows.
+			consumeGenericArgs();
+			if (t.kind != 1 && t.kind != 7) {
+				Error(116);
+				return Empty.newTerm();
+			}
+			z = FieldMethodInvocation(a);
 		} else if (t.kind == 1 || t.kind == 7) {
 			z = FieldMethodInvocation(a);
 		} else Error(116);

@@ -44,5 +44,9 @@ public final class Generics
 
   // Generic method invocation — type args inferred (not declared).
   System.out.println(identity("via-generic-method"));
+
+  // Slice 30: explicit type-witness invocation `.<TypeArgs>method(...)`
+  // — type args parse and erase.
+  System.out.println(Generics.<String>identity("via-witness"));
  }
 }
