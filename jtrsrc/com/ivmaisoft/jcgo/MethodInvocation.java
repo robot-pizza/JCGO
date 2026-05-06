@@ -149,6 +149,12 @@ final class MethodInvocation extends LexNode {
                 vecSize = vec.size();
                 id = (String) vec.elementAt(vecSize - 1);
             }
+            // Slice 33: pre-pass1 lambda / method-ref args with their
+            // target type set in c.currentVarType. Pre-resolves the
+            // method by name+arity on the receiver class; if exactly
+            // one candidate matches, formal types from that signature
+            // are threaded into each lambda arg's processPass1.
+            preProcessLambdaArgs(c, aclass, id);
             if (terms[0].isSafeExpr()) {
                 oldBranch = c.swapBranch(oldBranch);
                 terms[2].processPass1(c);
@@ -1109,6 +1115,76 @@ final class MethodInvocation extends LexNode {
     }
 
     // === Varargs call-site bundling (slice 2b, JLS 15.12.4.2) =========
+
+    /**
+     * Slice 33: pre-pass1 each lambda / method-reference argument with
+     * its target functional-interface type plumbed through
+     * c.currentVarType. The target type comes from the unique method
+     * on the receiver class with matching name and arity. If the
+     * lookup is ambiguous (overloads with the same name+arity) the
+     * lambda gets no target and pass1 will fall back to its existing
+     * "lambda needs an explicit functional-interface target" path.
+     */
+    private void preProcessLambdaArgs(Context c, ClassDefinition aclass,
+            String id) {
+        if (id == null || !hasLambdaArg()) return;
+        ClassDefinition rcv = aclass != null ? aclass : resultClass;
+        if (rcv == null) {
+            // Unqualified call inside the same class — try currentClass.
+            rcv = c.currentClass;
+        }
+        if (rcv == null) return;
+        rcv.define(c.forClass);
+        ObjVector args = new ObjVector();
+        flattenArgsInto(terms[2], args);
+        int argCount = args.size();
+        MethodSignature uniqueFormals = findUniqueByNameArity(rcv, id,
+                argCount);
+        if (uniqueFormals == null) return;
+        for (int i = 0; i < argCount; i++) {
+            Term head = (Term) args.elementAt(i);
+            if (!(head instanceof Argument)) continue;
+            Term inner = ((Argument) head).terms[0];
+            if (!(inner instanceof LambdaExpression)
+                    && !(inner instanceof MethodReference)) continue;
+            ExpressionType oldVar = c.currentVarType;
+            c.currentVarType = uniqueFormals.paramAt(i);
+            inner.processPass1(c);
+            c.currentVarType = oldVar;
+        }
+    }
+
+    private boolean hasLambdaArg() {
+        ObjVector args = new ObjVector();
+        flattenArgsInto(terms[2], args);
+        for (int i = 0; i < args.size(); i++) {
+            Term head = (Term) args.elementAt(i);
+            if (!(head instanceof Argument)) continue;
+            Term inner = ((Argument) head).terms[0];
+            if (inner instanceof LambdaExpression
+                    || inner instanceof MethodReference) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static MethodSignature findUniqueByNameArity(
+            ClassDefinition cls, String name, int arity) {
+        java.util.Enumeration en = cls.enumerateMethodSignatures();
+        MethodSignature unique = null;
+        while (en.hasMoreElements()) {
+            String sig = (String) en.nextElement();
+            MethodDefinition md = cls.getMethodNoInheritance(sig);
+            if (md == null) continue;
+            if (!name.equals(md.id())) continue;
+            MethodSignature msig = md.methodSignature();
+            if (msig.paramCount() != arity) continue;
+            if (unique != null) return null;  // ambiguous
+            unique = msig;
+        }
+        return unique;
+    }
 
     /**
      * Slice 18b (Java 5): after a successful matchMethod, walk the

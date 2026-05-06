@@ -20,6 +20,12 @@ public final class Lambda
   return x -> x + 1;
  }
 
+ // Slice 33 helper: a method that takes a functional-interface arg.
+ static void forEach(IntOp op)
+ {
+  System.out.println(op.apply(7));
+ }
+
  static Runnable greeter()
  {
   return () -> System.out.println("hello");
@@ -100,5 +106,10 @@ public final class Lambda
   castR.run();
   IntOp castInc = (IntOp) x -> x + 100;
   System.out.println(castInc.apply(1));
+
+  // Slice 33: lambda / method-ref as method argument — target comes
+  // from the called method's formal-parameter type (looked up by
+  // unique name+arity on the receiver class).
+  forEach(x -> x * 10);
  }
 }

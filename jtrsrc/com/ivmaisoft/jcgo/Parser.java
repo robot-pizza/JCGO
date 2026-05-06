@@ -617,14 +617,24 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ArgumentList() {
 		Term z;
 		Term a, c = null;
-		a = JavaExpression();
+		// Slice 33: accept lambda or method-reference as an argument.
+		// MethodInvocation.processPass1 pre-resolves the receiver/method
+		// to thread the formal parameter type into c.currentVarType
+		// before pass1ing the lambda body.
+		if (looksLikeLambda()) {
+			a = LambdaParse();
+		} else if (looksLikeMethodRef()) {
+			a = MethodRefParse();
+		} else {
+			a = JavaExpression();
+		}
 		if (t.kind == 27) {
 			Get();
 			c = ArgumentList();
 		}
 		z = c != null ? (Term) (new ParameterList(new Argument(a), c)) :
 		     new Argument(a);
-		
+
 		return z;
 	}
 
