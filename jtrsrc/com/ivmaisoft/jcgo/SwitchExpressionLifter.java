@@ -267,6 +267,28 @@ final class SwitchExpressionLifter {
         return anyPatternCase(arrowCases);
     }
 
+    /**
+     * Slice 22b: parse-time lift for `lhs = switch (...) {...};` where
+     * lhs is a plain identifier already in scope. The LHS gives us
+     * everything we need (no temp); each arm becomes a `lhs = val;
+     * break;` and the whole assignment is replaced by the resulting
+     * SwitchStatement. Returns null when the input isn't a simple
+     * identifier-LHS Assignment of a SwitchExpression, or when the
+     * switch contains pattern cases (those need the $matched flag
+     * setup that the assignment-form lifter doesn't reach).
+     */
+    static Term tryLiftAssign(Term node) {
+        if (!(node instanceof Assignment)) return null;
+        Assignment a = (Assignment) node;
+        if (a.terms[1].getSym() != LexTerm.EQUALS) return null;
+        if (!(a.terms[2] instanceof SwitchExpression)) return null;
+        SwitchExpression se = (SwitchExpression) a.terms[2];
+        String lhsName = a.terms[0].dottedName();
+        if (lhsName == null || lhsName.indexOf('.') >= 0) return null;
+        if (anyPatternCases(se)) return null;
+        return buildSwitchStmt(se, lhsName);
+    }
+
     private static void flattenCases(Term t, ObjVector out) {
         if (!t.notEmpty()) {
             return;

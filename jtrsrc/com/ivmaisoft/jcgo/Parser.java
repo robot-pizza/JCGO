@@ -1314,7 +1314,13 @@ d : new PrimaryFieldAccess(a, c));
 			Term lifted = SwitchExpressionLifter.tryLift(b);
 			if (lifted != null) return lifted;
 		}
-		z = new ExprStatement(b != null ? b : a);
+		// Slice 22b: lift `lhs = switch (...) {...};` (no decl) into a
+		// SwitchStatement that assigns to lhs in each arm.
+		Term assignCandidate = b != null ? b : a;
+		Term liftedAssign = SwitchExpressionLifter
+			.tryLiftAssign(assignCandidate);
+		if (liftedAssign != null) return liftedAssign;
+		z = new ExprStatement(assignCandidate);
 		return z;
 	}
 
@@ -1721,7 +1727,14 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b, c;
 		b = AssignmentOperator();
-		c = JavaExpression();
+		// Slice 22b: allow `lhs = switch (...) {...}`. Lift happens at
+		// the statement parser site (OptForVarExprInitTailSemi) where
+		// the result becomes a bare SwitchStatement.
+		if (t.kind == 53) {
+			c = SwitchExpressionParse();
+		} else {
+			c = JavaExpression();
+		}
 		z = new Assignment(a, b, c);
 		return z;
 	}

@@ -25,6 +25,19 @@ public final class SwitchExprReturn
   };
  }
 
+ // Slice 22b: assignment-form lift — `lhs = switch (...);`.
+ static int kind(int day)
+ {
+  int k;
+  k = switch (day)
+  {
+   case 0, 6 -> 0;
+   case 1, 2, 3, 4, 5 -> 1;
+   default -> 2;
+  };
+  return k;
+ }
+
  public static void main(String[] args)
  {
   System.out.println(rank(0));
@@ -32,5 +45,8 @@ public final class SwitchExprReturn
   System.out.println(rank(7));
   System.out.println(label(1));
   System.out.println(label(5));
+  System.out.println(kind(0));
+  System.out.println(kind(2));
+  System.out.println(kind(8));
  }
 }
