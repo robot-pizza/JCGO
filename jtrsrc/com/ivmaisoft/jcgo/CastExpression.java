@@ -88,7 +88,16 @@ final class CastExpression extends LexNode {
             t0.processPass1(c);
             exprType0 = t0.exprType();
             if (processSecondArg) {
+                // Slice 34: thread cast target type into c.currentVarType
+                // so a lambda or method-reference body sees the cast as
+                // its target functional interface (`(Runnable) () -> ...`).
+                ExpressionType oldVarType = c.currentVarType;
+                if (t1 instanceof LambdaExpression
+                        || t1 instanceof MethodReference) {
+                    c.currentVarType = exprType0;
+                }
                 t1.processPass1(c);
+                c.currentVarType = oldVarType;
             }
             exprType1 = t1.exprType();
             int s0 = exprType0.objectSize();

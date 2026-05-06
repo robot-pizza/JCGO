@@ -93,5 +93,12 @@ public final class Lambda
 
   // Slice 24h: lambda inside an instance method capturing `this`.
   new Counter(10).run();
+
+  // Slice 34: lambda / method-ref in cast position — cast type names
+  // the target functional interface explicitly.
+  Runnable castR = (Runnable)() -> System.out.println("cast-lambda");
+  castR.run();
+  IntOp castInc = (IntOp) x -> x + 100;
+  System.out.println(castInc.apply(1));
  }
 }

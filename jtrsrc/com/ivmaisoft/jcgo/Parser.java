@@ -696,7 +696,13 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term UnaryWithParaTail(Term b) {
 		Term z;
 		z = Empty.term; Term d;
-		if (StartOf(5)) {
+		// Slice 34: lambda or method-reference body of a cast — the
+		// cast type provides the lambda's target functional interface.
+		if (looksLikeLambda()) {
+			z = new CastExpression(b, LambdaParse());
+		} else if (looksLikeMethodRef()) {
+			z = new CastExpression(b, MethodRefParse());
+		} else if (StartOf(5)) {
 			z = CastPlusMinusUnary(b);
 		} else if (t.kind == 96 || t.kind == 97) {
 			z = PostfixOptUnaryExpr(b);
