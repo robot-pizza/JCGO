@@ -720,10 +720,14 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term; Term d;
 		// Slice 34: lambda or method-reference body of a cast — the
 		// cast type provides the lambda's target functional interface.
+		// Slice 38: switch-expression body of a cast — the surrounding
+		// statement-level hoister picks it up and lifts to a temp.
 		if (looksLikeLambda()) {
 			z = new CastExpression(b, LambdaParse());
 		} else if (looksLikeMethodRef()) {
 			z = new CastExpression(b, MethodRefParse());
+		} else if (t.kind == 53) {
+			z = new CastExpression(b, SwitchExpressionParse());
 		} else if (StartOf(5)) {
 			z = CastPlusMinusUnary(b);
 		} else if (t.kind == 96 || t.kind == 97) {
@@ -804,7 +808,10 @@ d : new PrimaryFieldAccess(a, c));
 		Term b, d = null;
 		b = JavaExpression();
 		Expect(12);
-		if (StartOf(6)) {
+		// Slice 38: also enter the cast-tail dispatcher when a `switch`
+		// follows `(Type)` — `(long) switch (...) {...}`. The tail
+		// itself routes kind-53 through SwitchExpressionParse.
+		if (StartOf(6) || t.kind == 53) {
 			d = UnaryWithParaTail(b);
 		}
 		z = d != null ? d : new ParenExpression(b);
@@ -1384,12 +1391,14 @@ d : new PrimaryFieldAccess(a, c));
 		if (liftedAssign != null) return liftedAssign;
 		// Slice 36: hoist any switch-expression args inside method
 		// calls (and other sub-expressions) out into preamble decls
-		// + switch-stmts. Wrap the result in a Block when preambles
-		// exist.
+		// + switch-stmts. Returns a Seq (not a Block) so any
+		// LocalVariableDecl in the assignCandidate (e.g.
+		// `T x = (T) switch(...);`) keeps its scope visible to the
+		// enclosing block — Block would shadow it.
 		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(assignCandidate);
 		if (hr.hoisted) {
-			return new Block(new Seq(hr.preambles,
-				new ExprStatement(hr.rewrittenRoot)));
+			return new Seq(hr.preambles,
+				new ExprStatement(hr.rewrittenRoot));
 		}
 		z = new ExprStatement(assignCandidate);
 		return z;

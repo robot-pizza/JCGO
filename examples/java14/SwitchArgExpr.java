@@ -35,5 +35,11 @@ public final class SwitchArgExpr
   System.out.println(max(
    switch (day) { case 0 -> 100; default -> 1; },
    switch (day) { case 0 -> 0; default -> 50; }));
+
+  // Slice 38: switch expression in cast position. Inner parens
+  // around the switch aren't needed — `(long) switch(...)` parses
+  // directly through UnaryWithParaTail.
+  long big = (long) switch (day) { case 0 -> 100; default -> 99; };
+  System.out.println(big);
  }
 }
