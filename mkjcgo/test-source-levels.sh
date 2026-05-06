@@ -54,7 +54,7 @@ prev_for_17=16
 # positive test (since they may be pre-modern code that translates at
 # any level).
 neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
-neg_7="MultiCatch StringSwitch"
+neg_7="MultiCatch StringSwitch TryWithResources"
 neg_8="DefaultIface"
 neg_10="VarLocal VarFor VarForeach"
 neg_16="PatternInstanceof Records"

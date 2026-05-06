@@ -1589,9 +1589,109 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term TryStatement() {
 		Term z;
 		Term b;
+		if (t.kind == 11) {
+			z = TryWithResources();
+			return z;
+		}
 		b = JavaBlock();
 		z = TryStatementTail(b);
 		return z;
+	}
+
+	// try-with-resources (Java 7, JLS 14.20.3). Slice 13 MVP: only the
+	// `try (resources) body` form. catch/finally combinations and var
+	// resources are not yet supported.
+	private static Term TryWithResources() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_70) {
+			SemError("try-with-resources requires -source 7 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Expect(11);
+		ObjVector resources = new ObjVector();
+		while (true) {
+			Term resource = parseTwrResource();
+			resources.addElement(resource);
+			if (t.kind == 9) {
+				Get();
+				if (t.kind == 12) break;
+			} else if (t.kind == 12) {
+				break;
+			} else {
+				Error(11);
+				break;
+			}
+		}
+		Expect(12);
+		Term body = JavaBlock();
+		if (t.kind == 62 || t.kind == 63) {
+			SemError("try-with-resources combined with catch/finally is not yet implemented");
+		}
+		return buildTwrDesugar(resources, body);
+	}
+
+	// Each resource: [final] Type Identifier = Expression
+	private static Term parseTwrResource() {
+		boolean isFinal = false;
+		if (t.kind == 20) {
+			Get();
+			isFinal = true;
+		}
+		Term type = SimpleType();
+		Term name = Identifier();
+		Expect(46);
+		Term init = JavaExpression();
+		Term varDeclr = new VariableDeclarator(
+			new VariableIdentifier(name), Empty.newTerm(), init);
+		Term decl = isFinal
+			? new LocalVariableDecl(new AccModifier(AccModifier.FINAL),
+				type, Empty.newTerm(), varDeclr)
+			: new LocalVariableDecl(type, varDeclr);
+		return new ExprStatement(decl);
+	}
+
+	private static Term buildTwrDesugar(ObjVector resources, Term body) {
+		Term tryBody = body;
+		// Build close calls in reverse declaration order.
+		Term closeSeq = Empty.newTerm();
+		for (int i = resources.size() - 1; i >= 0; i--) {
+			Term resource = (Term) resources.elementAt(i);
+			String resName = extractTwrResourceName(resource);
+			if (resName == null) continue;
+			Term receiver = new Expression(new QualifiedName(
+				new LexTerm(LexTerm.ID, resName), Empty.newTerm()));
+			Term call = new MethodInvocation(receiver,
+				new LexTerm(LexTerm.ID, "close"), Empty.newTerm());
+			Term stmt = new ExprStatement(call);
+			closeSeq = closeSeq.notEmpty()
+				? new Seq(stmt, closeSeq) : stmt;
+		}
+		Term finallyBlock = new Block(closeSeq);
+		Term wrappedTry = new TryStatement(tryBody, finallyBlock);
+		// Wrap resources + try in a Block.
+		Term blockSeq = wrappedTry;
+		for (int i = resources.size() - 1; i >= 0; i--) {
+			Term resource = (Term) resources.elementAt(i);
+			blockSeq = new Seq(resource, blockSeq);
+		}
+		return new Block(blockSeq);
+	}
+
+	private static String extractTwrResourceName(Term resourceStmt) {
+		if (resourceStmt instanceof ExprStatement) {
+			Term inner = ((ExprStatement) resourceStmt).terms[0];
+			if (inner instanceof LocalVariableDecl) {
+				LocalVariableDecl lvd = (LocalVariableDecl) inner;
+				Term decl = lvd.terms[3];
+				if (decl instanceof VariableDeclarator) {
+					Term vid = ((VariableDeclarator) decl).terms[0];
+					if (vid instanceof VariableIdentifier) {
+						return ((VariableIdentifier) vid).terms[0]
+							.dottedName();
+					}
+				}
+			}
+		}
+		return null;
 	}
 
 	private static Term ThrowStatement() {
