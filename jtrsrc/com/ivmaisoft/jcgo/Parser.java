@@ -1388,9 +1388,12 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term SwitchBlockStatementGroup() {
 		Term z;
 		Term b, c = Empty.term; z = Empty.term;
-		
+
 		if (t.kind == 60) {
 			Get();
+			if (looksLikeArrow()) {
+				return parseArrowCaseTail(null);
+			}
 			Expect(57);
 			if (StartOf(13)) {
 				c = BlockStatementSeq();
@@ -1398,15 +1401,76 @@ d : new PrimaryFieldAccess(a, c));
 			z = new CaseStatement(c);
 		} else if (t.kind == 61) {
 			Get();
+			// Heuristic: `case label,...` or `case label -> ...` is arrow
+			// form. Use UnaryExpression so the `-` of the arrow isn't eaten
+			// as binary subtraction. `case label : ...` is the existing
+			// colon form and uses the wider ConditionalExpression to allow
+			// `case 1+2:` etc.
+			boolean arrowExpected = peek(2).kind == 27
+				|| (peek(2).kind == 67 && peek(3).kind == 75);
+			if (arrowExpected) {
+				ObjVector labels = new ObjVector();
+				labels.addElement(UnaryExpression());
+				while (t.kind == 27) {
+					Get();
+					labels.addElement(UnaryExpression());
+				}
+				return parseArrowCaseTail(labels);
+			}
 			b = ConditionalExpression();
 			Expect(57);
 			if (StartOf(13)) {
 				c = BlockStatementSeq();
 			}
 			z = new CaseStatement(new Expression(b), c);
-			
+
 		} else Error(133);
 		return z;
+	}
+
+	// Switch expressions / arrow-case switch statements (Java 14, JEP 361).
+	// Arrow form: `case L1, L2 -> stmt-or-block-or-expr;`. labels==null
+	// means default arrow (`default -> ...`); else labels is the
+	// non-empty list of case label expressions.
+	private static boolean looksLikeArrow() {
+		return t.kind == 67 && peek(2).kind == 75;
+	}
+
+	private static Term parseArrowCaseTail(ObjVector labels) {
+		if (Main.dict.javaVersion < JavaVersion.JLS_140) {
+			SemError("arrow case form requires -source 14 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Get(); Get();
+		Term body;
+		if (t.kind == 28) {
+			body = JavaBlock();
+		} else if (t.kind == 54) {
+			Get();
+			body = ThrowStatement();
+		} else {
+			Term expr = JavaExpression();
+			Expect(9);
+			body = new ExprStatement(expr);
+		}
+		// Append synthetic break so the case doesn't fall through.
+		Term bodyWithBreak = new Seq(body,
+			new BreakStatement(Empty.newTerm()));
+		// Build chain: for multi-label, all but last get empty bodies;
+		// last (or default) gets the body+break.
+		if (labels == null) {
+			return new CaseStatement(bodyWithBreak);
+		}
+		int n = labels.size();
+		Term result = new CaseStatement(
+			new Expression((Term) labels.elementAt(n - 1)), bodyWithBreak);
+		for (int i = n - 2; i >= 0; i--) {
+			Term emptyBodyCase = new CaseStatement(
+				new Expression((Term) labels.elementAt(i)),
+				Empty.newTerm());
+			result = new Seq(emptyBodyCase, result);
+		}
+		return result;
 	}
 
 	private static Term SwitchBlockStatementGroupSeq() {
