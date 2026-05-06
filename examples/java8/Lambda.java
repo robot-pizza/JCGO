@@ -39,6 +39,25 @@ public final class Lambda
   return x -> x * m;
  }
 
+ // Slice 24h: lambda inside an instance method capturing enclosing
+ // instance state. The lambda's synthesized anonymous class is
+ // non-static, so JCGO's outerThisRef machinery wires up a
+ // `this$N` reference to the enclosing Counter instance. Bare
+ // `this` inside a lambda body still refers to the anon class
+ // itself (proper JLS semantics would rewrite to outer `this`,
+ // which JCGO can't do without an AST walk over the body) — the
+ // user spells `Counter.this.field` explicitly for now.
+ static final class Counter
+ {
+  final int seed;
+  Counter(int seed) { this.seed = seed; }
+  void run()
+  {
+   IntOp shift = x -> x + Counter.this.seed;
+   System.out.println(shift.apply(3));
+  }
+ }
+
  public static void main(String[] args)
  {
   Runnable r = () -> System.out.println("ran");
@@ -66,5 +85,8 @@ public final class Lambda
 
   IntOp times7 = makeMultiplier(7);
   System.out.println(times7.apply(6));
+
+  // Slice 24h: lambda inside an instance method capturing `this`.
+  new Counter(10).run();
  }
 }
