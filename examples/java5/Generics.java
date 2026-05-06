@@ -1,14 +1,7 @@
-// Generics (Java 5, JLS 4.5). Slice 24 MVP — erasure model: parser
-// accepts and discards `<TypeArgs>` everywhere they appear in type
-// positions and on class/interface declarations, so user code can use
-// generic syntax without JCGO needing to track parameter bindings.
-//
-// Out of scope:
-//   - Bounded type-parameter checking (`<T extends Number>` parses
-//     but the bound isn't enforced)
-//   - Generic methods `<T> T foo(T x)`
-//   - Diamond operator `new ArrayList<>()` — needs separate parser hook
-//   - Type-argument-aware overload resolution
+// Generics (Java 5, JLS 4.5) + diamond + generic methods. Slice 24
+// erasure-mode parser support, slice 24b adds generic-method prefix
+// and exercises the diamond operator (which already works because
+// consumeGenericArgs accepts an empty `<>`).
 
 public final class Generics
 {
@@ -27,6 +20,12 @@ public final class Generics
   Object held();
  }
 
+ // Generic method — `<T>` prefix is consumed and discarded.
+ static <T> Object identity(Object x)
+ {
+  return x;
+ }
+
  public static void main(String[] args)
  {
   Box<Integer> b = new Box<Integer>(Integer.valueOf(42));
@@ -38,5 +37,12 @@ public final class Generics
   // Nested generics — `>>` closes both layers in one token.
   Box<Box<Integer>> nested = new Box<Box<Integer>>(b);
   System.out.println(((Box) nested.get()).get());
+
+  // Diamond operator — `<>` is empty type args, parser accepts.
+  Box<String> d = new Box<>("diamond");
+  System.out.println(d.get());
+
+  // Generic method invocation — type args inferred (not declared).
+  System.out.println(identity("via-generic-method"));
  }
 }

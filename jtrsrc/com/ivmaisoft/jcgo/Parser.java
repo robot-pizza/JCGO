@@ -3082,6 +3082,13 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term MemberDecl() {
 		Term z;
 		z = Empty.term; Term a;
+		// Slice 24b: `<T> ReturnType foo(T x) ...` — generic-method
+		// type-parameter prefix. Consume + erase, then dispatch on the
+		// return type as if the prefix wasn't there.
+		if (t.kind == 73) {
+			consumeGenericArgs();
+			return MemberDecl();
+		}
 		switch (t.kind) {
 		case 28: {
 			a = JavaBlock();
