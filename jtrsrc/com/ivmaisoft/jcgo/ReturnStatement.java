@@ -90,7 +90,18 @@ final class ReturnStatement extends LexNode {
                             (SwitchExpression) terms[0])) {
                 liftSwitchExprReturn(c);
             }
+            // Slice 24d: a lambda or method reference at the head of
+            // the return expression resolves its target type from the
+            // method's declared return type. Thread it through
+            // c.currentVarType the same way VariableDefinition does
+            // for an initializer expression.
+            ExpressionType oldVarType = c.currentVarType;
+            if (terms[0] instanceof LambdaExpression
+                    || terms[0] instanceof MethodReference) {
+                c.currentVarType = md.exprType();
+            }
             terms[0].processPass1(c);
+            c.currentVarType = oldVarType;
             int s0 = terms[0].exprType().objectSize();
             int s1 = md.exprType().objectSize();
             // Slice 18 (Java 5): autobox/unbox return value to method's

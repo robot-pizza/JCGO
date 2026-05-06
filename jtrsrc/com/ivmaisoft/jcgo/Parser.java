@@ -2093,8 +2093,16 @@ d : new PrimaryFieldAccess(a, c));
 		// parsing is gated to JLS 14+ via parseSwitchExprCase's checks;
 		// the actual lift happens at pass1 in ReturnStatement.processPass1
 		// where the method's return type is available.
+		// Slice 24d: also accept lambdas and method references at the
+		// start of the return expression, since both need an explicit
+		// target type which the surrounding method's declared return
+		// type provides at pass1.
 		if (t.kind == 53) {
 			b = SwitchExpressionParse();
+		} else if (looksLikeLambda()) {
+			b = LambdaParse();
+		} else if (looksLikeMethodRef()) {
+			b = MethodRefParse();
 		} else if (StartOf(1)) {
 			b = JavaExpression();
 		}
