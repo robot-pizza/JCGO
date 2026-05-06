@@ -2,7 +2,7 @@
  * @(#) $(JCGO)/jtrsrc/com/ivmaisoft/jcgo/ForeachStatement.java --
  * a part of JCGO translator.
  **
- * Project: JCGO (http://www.ivmaisoft.com/jcgo/)
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
  * Copyright (C) 2026 robot.pizza
  * All rights reserved.
  */
