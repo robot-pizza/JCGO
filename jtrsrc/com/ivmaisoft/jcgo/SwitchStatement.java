@@ -3,7 +3,7 @@
  * a part of JCGO translator.
  **
  * Project: JCGO (http://www.ivmaisoft.com/jcgo/)
- * Copyright (C) 2001-2026 Ivan Maidanski <ivmai@mail.ru>
+ * Copyright (C) 2001-2012 Ivan Maidanski <ivmai@mail.ru>
  * All rights reserved.
  */
 
