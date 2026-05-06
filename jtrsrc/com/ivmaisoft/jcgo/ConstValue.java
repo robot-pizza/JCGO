@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -83,11 +92,26 @@ final class ConstValue {
             str = str.substring(0, str.length() - 1);
             isLong = true;
         }
+        // Slice 17 (Java 7): strip embedded underscores from the digit run
+        // before parsing. Scanner already validated they only appear in
+        // numeric-literal token bodies.
+        if (str.indexOf('_') >= 0) {
+            StringBuffer sb = new StringBuffer(str.length());
+            for (int i = 0; i < str.length(); i++) {
+                char c = str.charAt(i);
+                if (c != '_') sb.append(c);
+            }
+            str = sb.toString();
+        }
         int radix = 10;
         if (str.length() > 1 && str.charAt(0) == '0') {
             radix = 8;
             if (str.charAt(1) == 'x' || str.charAt(1) == 'X') {
                 radix = 16;
+                str = str.substring(2);
+            } else if (str.charAt(1) == 'b' || str.charAt(1) == 'B') {
+                // Slice 17 (Java 7): `0b...` binary integer literal.
+                radix = 2;
                 str = str.substring(2);
             }
         }

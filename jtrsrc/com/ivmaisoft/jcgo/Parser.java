@@ -770,11 +770,13 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		case 2: {
 			Get();
+			gateNumericLiteral(token.val);
 			z = new IntLiteral(token.val);
 			break;
 		}
 		case 3: {
 			Get();
+			gateNumericLiteral(token.val);
 			z = new FloatLiteral(token.val);
 			break;
 		}
@@ -1595,6 +1597,25 @@ d : new PrimaryFieldAccess(a, c));
 			result.setRecordPattern(recordPattern, guard);
 		}
 		return result;
+	}
+
+	// Slice 17 (Java 7): version-gate numeric literals containing
+	// underscores or the `0b`/`0B` binary prefix. The scanner accepts
+	// these unconditionally; gating at parse time is cheaper than
+	// threading version state into Scanner.
+	private static void gateNumericLiteral(String val) {
+		if (Main.dict.javaVersion >= JavaVersion.JLS_70) return;
+		boolean hasUnderscore = val.indexOf('_') >= 0;
+		boolean isBinary = val.length() > 1 && val.charAt(0) == '0'
+			&& (val.charAt(1) == 'b' || val.charAt(1) == 'B');
+		if (hasUnderscore) {
+			SemError("numeric literal underscore requires -source 7 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		if (isBinary) {
+			SemError("binary integer literal requires -source 7 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
 	}
 
 	// Slice 16: parses a record pattern. Caller has already verified the

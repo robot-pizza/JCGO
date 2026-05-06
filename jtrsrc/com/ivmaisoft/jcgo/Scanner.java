@@ -1,3 +1,24 @@
+/*
+ * @(#) $(JCGO)/jtrsrc/com/ivmaisoft/jcgo/Scanner.java --
+ * a part of JCGO translator.
+ **
+ * Originally generated from jcgo.atg by the (now-lost) jcoco115 fork
+ * of Coco/R for Java. Since the regenerator is unavailable upstream,
+ * this file is now hand-maintained.
+ */
+
+/*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Hand-edited to add slice-17 numeric-literal extensions: underscores
+ * between digits and `0b`/`0B` binary integer literals (JLS 7).
+ *
+ * Licensed under the same terms as JCGO upstream:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
 package com.ivmaisoft.jcgo;
 
 import java.io.*;
@@ -342,9 +363,11 @@ public class Scanner {
 					  || ch >= 'a' && ch <= 'f')) {state = 13; break;}
 					else {t.kind = noSym; break loop;}
 				case 13:
+					// Slice 17 (Java 7): allow `_` between hex digits.
 					if ((ch >= '0' && ch <= '9'
 					  || ch >= 'A' && ch <= 'F'
-					  || ch >= 'a' && ch <= 'f')) {break;}
+					  || ch >= 'a' && ch <= 'f'
+					  || ch == '_')) {break;}
 					else if ((ch == 'L'
 					  || ch == 'l')) {state = 14; break;}
 					else {t.kind = 2; break loop;}
@@ -555,7 +578,8 @@ public class Scanner {
 				case 49:
 					{t.kind = 6; break loop;}
 				case 50:
-					if ((ch >= '0' && ch <= '9')) {break;}
+					// Slice 17 (Java 7): allow `_` between decimal digits.
+					if ((ch >= '0' && ch <= '9' || ch == '_')) {break;}
 					else if ((ch == 'D'
 					  || ch == 'F'
 					  || ch == 'd'
@@ -567,7 +591,11 @@ public class Scanner {
 					  || ch == 'e')) {state = 20; break;}
 					else {t.kind = 2; break loop;}
 				case 51:
-					if ((ch >= '0' && ch <= '7')) {state = 53; break;}
+					// Slice 17 (Java 7): `0b`/`0B` → binary literal, plus
+					// `_` between digits in octal continuation.
+					if ((ch >= '0' && ch <= '7' || ch == '_')) {state = 53; break;}
+					else if ((ch == 'B'
+					  || ch == 'b')) {state = 200; break;}
 					else if ((ch == 'D'
 					  || ch == 'F'
 					  || ch == 'd'
@@ -591,7 +619,8 @@ public class Scanner {
 					  || ch >= ']')) {state = 40; break;}
 					else {t.kind = noSym; break loop;}
 				case 53:
-					if ((ch >= '0' && ch <= '7')) {break;}
+					// Slice 17 (Java 7): allow `_` between octal digits.
+					if ((ch >= '0' && ch <= '7' || ch == '_')) {break;}
 					else if ((ch == 'D'
 					  || ch == 'F'
 					  || ch == 'd'
@@ -719,6 +748,16 @@ public class Scanner {
 					{t.kind = 97; break loop;}
 				case 100:
 					{t.kind = 0; break loop;}
+				// Slice 17 (Java 7): binary integer literal `0b...`/`0B...`.
+				// State 200 entered after the `b`/`B`; requires at least
+				// one binary digit. State 201 is the binary-digit loop.
+				case 200:
+					if ((ch == '0' || ch == '1')) {state = 201; break;}
+					else {t.kind = noSym; break loop;}
+				case 201:
+					if ((ch == '0' || ch == '1' || ch == '_')) {break;}
+					else if ((ch == 'L' || ch == 'l')) {state = 14; break;}
+					else {t.kind = 2; break loop;}
 			}
 		}
 		t.str = buf.toString();
