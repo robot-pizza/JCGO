@@ -291,6 +291,15 @@ public class Scanner {
 	static Token Scan() {
 		while (ignore.get((int)ch)) NextCh();
 		if (ch == '/' && Comment0()  || ch == '/' && Comment1() ) return Scan();
+		// Slice 20 (Java 15, JEP 378): text block opening `"""`.
+		// Detection by raw buffer peek — `"""` can't contain unicode
+		// escape sequences in the delimiter itself, so this is safe.
+		if (ch == '"' && Main.dict.javaVersion >= JavaVersion.JLS_150
+				&& Buffer.pos < Buffer.bufLen - 1
+				&& Buffer.buf[Buffer.pos] == '"'
+				&& Buffer.buf[Buffer.pos + 1] == '"') {
+			return scanTextBlock();
+		}
 		t = new Token();
 		t.pos = pos; t.col = pos - lineStart + 1; t.line = line;
 		StringBuffer buf = new StringBuffer();
@@ -763,5 +772,171 @@ public class Scanner {
 		t.str = buf.toString();
 		t.val = t.str;
 		return t;
+	}
+
+	// Slice 20: text block scanner (Java 15, JEP 378). Called when
+	// Scan() detects the opening `"""`. Reads raw content up to the
+	// closing `"""`, applies the JLS 3.10.6 incidental-whitespace
+	// strip and trailing-whitespace strip, then re-emits the result
+	// as a normal string-literal token (kind 5) whose value is
+	// `"<escaped processed text>"`.
+	private static Token scanTextBlock() {
+		Token tk = new Token();
+		tk.pos = pos; tk.col = pos - lineStart + 1; tk.line = line;
+		// Consume the three opening quotes.
+		NextCh(); NextCh(); NextCh();
+		// JLS: only whitespace allowed between `"""` and the line
+		// terminator; the content starts on the next line.
+		while (ch == ' ' || ch == '\t' || ch == '\f') NextCh();
+		if (ch != '\r' && ch != '\n') {
+			tk.kind = noSym;
+			tk.str = "\"\"\"";
+			tk.val = tk.str;
+			return tk;
+		}
+		if (ch == '\r') NextCh();
+		if (ch == '\n') NextCh();
+
+		StringBuffer raw = new StringBuffer();
+		boolean closed = false;
+		while (ch != EOF) {
+			if (ch == '"' && Buffer.pos < Buffer.bufLen - 1
+					&& Buffer.buf[Buffer.pos] == '"'
+					&& Buffer.buf[Buffer.pos + 1] == '"') {
+				NextCh(); NextCh(); NextCh();
+				closed = true;
+				break;
+			}
+			if (ch == '\r') {
+				raw.append('\n');
+				NextCh();
+				if (ch == '\n') NextCh();
+			} else {
+				raw.append(ch);
+				NextCh();
+			}
+		}
+		if (!closed) {
+			tk.kind = noSym;
+			tk.str = raw.toString();
+			tk.val = tk.str;
+			return tk;
+		}
+
+		String processed = postProcessTextBlock(raw.toString());
+		String encoded = encodeAsStringLiteral(processed);
+		tk.kind = 5; // STRING
+		tk.str = encoded;
+		tk.val = encoded;
+		return tk;
+	}
+
+	// JLS 3.10.6 step 2: split into lines, drop trailing whitespace,
+	// determine common minimum indentation across non-blank lines AND
+	// the line that the closing delimiter sits on (always the last
+	// line of `raw`, possibly empty), strip that prefix, rejoin.
+	private static String postProcessTextBlock(String raw) {
+		java.util.ArrayList lines = new java.util.ArrayList();
+		int start = 0;
+		for (int i = 0; i < raw.length(); i++) {
+			if (raw.charAt(i) == '\n') {
+				lines.add(raw.substring(start, i));
+				start = i + 1;
+			}
+		}
+		// The "closing line" — content between the last newline and
+		// the position of `"""`. May be empty (closing delimiter at
+		// column 0) or whitespace-only (closing delimiter indented).
+		lines.add(raw.substring(start));
+
+		// Capture each line's leading-whitespace count BEFORE trimming.
+		// The closing-delimiter line is whitespace-only by construction,
+		// so trimming it first would zero out its indent and break the
+		// JLS rule that the closing line's column still anchors the
+		// shared prefix.
+		int n = lines.size();
+		int[] indents = new int[n];
+		for (int i = 0; i < n; i++) {
+			String s = (String) lines.get(i);
+			int indent = 0;
+			while (indent < s.length()
+					&& (s.charAt(indent) == ' '
+						|| s.charAt(indent) == '\t')) {
+				indent++;
+			}
+			indents[i] = indent;
+		}
+
+		// Strip trailing whitespace from each line.
+		for (int i = 0; i < n; i++) {
+			String s = (String) lines.get(i);
+			int end = s.length();
+			while (end > 0) {
+				char c = s.charAt(end - 1);
+				if (c == ' ' || c == '\t' || c == '\f') end--;
+				else break;
+			}
+			lines.set(i, s.substring(0, end));
+		}
+
+		// Find min indent across non-blank content lines + the closing
+		// line. Blank content lines (now empty) are excluded; the
+		// closing line is included even though it's empty after trim.
+		int minIndent = Integer.MAX_VALUE;
+		for (int i = 0; i < n; i++) {
+			boolean isClosing = (i == n - 1);
+			boolean isBlankAfterTrim = ((String) lines.get(i)).length() == 0;
+			if (isBlankAfterTrim && !isClosing) continue;
+			if (indents[i] < minIndent) minIndent = indents[i];
+		}
+		if (minIndent == Integer.MAX_VALUE) minIndent = 0;
+
+		// Strip the minIndent prefix from each line and rejoin with \n.
+		// The closing line is dropped from output (its position is
+		// just there to anchor the indentation calculation).
+		StringBuffer out = new StringBuffer();
+		for (int i = 0; i < n - 1; i++) {
+			String s = (String) lines.get(i);
+			if (s.length() >= minIndent) {
+				out.append(s.substring(minIndent));
+			}
+			out.append('\n');
+		}
+		String closing = (String) lines.get(n - 1);
+		if (closing.length() > minIndent) {
+			out.append(closing.substring(minIndent));
+		}
+		return out.toString();
+	}
+
+	// Re-encode processed content as a Java source-form string-literal
+	// (with surrounding quotes and standard escape sequences) so the
+	// parser-side StringLiteral pipeline can normalize it as usual.
+	private static String encodeAsStringLiteral(String s) {
+		StringBuffer sb = new StringBuffer(s.length() + 2);
+		sb.append('"');
+		for (int i = 0; i < s.length(); i++) {
+			char c = s.charAt(i);
+			switch (c) {
+			case '"':  sb.append("\\\""); break;
+			case '\\': sb.append("\\\\"); break;
+			case '\n': sb.append("\\n"); break;
+			case '\r': sb.append("\\r"); break;
+			case '\t': sb.append("\\t"); break;
+			case '\b': sb.append("\\b"); break;
+			case '\f': sb.append("\\f"); break;
+			default:
+				if (c < 0x20 || c == 0x7f) {
+					sb.append('\\');
+					sb.append((char) ((c >> 6) + '0'));
+					sb.append((char) (((c >> 3) & 0x7) + '0'));
+					sb.append((char) ((c & 0x7) + '0'));
+				} else {
+					sb.append(c);
+				}
+			}
+		}
+		sb.append('"');
+		return sb.toString();
 	}
 }

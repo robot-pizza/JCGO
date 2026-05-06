@@ -1,5 +1,4 @@
-// JCGO-SKIP: text blocks (triple-quoted multi-line strings) are Java 15
-// (JEP 378). JCGO's lexer treats """..."""" as three string literals.
+// Text blocks (Java 15, JEP 378). Slice 20.
 
 public final class TextBlock
 {
