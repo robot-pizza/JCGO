@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -71,6 +80,13 @@ final class CondOrAndOperation extends LexNode {
 
     void processPass1(Context c) {
         terms[0].processPass1(c);
+        // Slice 18c: unbox a Boolean wrapper to boolean before the type
+        // check (`&&` / `||` operands).
+        if (Main.dict.javaVersion >= JavaVersion.JLS_50
+                && terms[0].exprType().objectSize() >= Type.CLASSINTERFACE) {
+            Term n = Autobox.forceUnbox(c, terms[0]);
+            if (n != null) terms[0] = n;
+        }
         if (terms[0].exprType().objectSize() != Type.BOOLEAN) {
             fatalError(c, "Conditional expression must be of boolean type");
         }
@@ -84,6 +100,11 @@ final class CondOrAndOperation extends LexNode {
                 terms[0].updateCondBranch(c, isAnd);
                 terms[2].processPass1(c);
                 c.intersectBranch(oldBranch);
+            }
+            if (Main.dict.javaVersion >= JavaVersion.JLS_50
+                    && terms[2].exprType().objectSize() >= Type.CLASSINTERFACE) {
+                Term n = Autobox.forceUnbox(c, terms[2]);
+                if (n != null) terms[2] = n;
             }
             if (terms[2].exprType().objectSize() != Type.BOOLEAN) {
                 fatalError(c, "Conditional expression must be of boolean type");

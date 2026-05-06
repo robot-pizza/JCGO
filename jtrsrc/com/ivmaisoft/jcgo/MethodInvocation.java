@@ -1201,6 +1201,27 @@ final class MethodInvocation extends LexNode {
         if (args.size() != k) {
             return;
         }
+        // Slice 18c: autobox each bundle element to the varargs element
+        // type. Without this, calling `f(Object... xs)` with `(1, 2, 3)`
+        // builds `Object[] {1, 2, 3}` whose elements fail the int → Object
+        // assignability check at the array initializer.
+        if (Main.dict.javaVersion >= JavaVersion.JLS_50) {
+            int dstSize = elementType.objectSize();
+            for (int i = n - 1; i < k; i++) {
+                Term head = (Term) args.elementAt(i);
+                if (!(head instanceof Argument)) continue;
+                Argument arg = (Argument) head;
+                Term inner = arg.terms[0];
+                int srcSize = inner.exprType().objectSize();
+                if (dstSize >= Type.CLASSINTERFACE
+                        && Autobox.isPrimitive(srcSize)) {
+                    Term coerced = Autobox.coerce(c, inner, dstSize);
+                    if (coerced != inner) {
+                        arg.replaceArgTermAndRefresh(coerced);
+                    }
+                }
+            }
+        }
         Term elementTypeTerm = exprTypeToTypeTerm(elementType);
         if (elementTypeTerm == null) {
             return;

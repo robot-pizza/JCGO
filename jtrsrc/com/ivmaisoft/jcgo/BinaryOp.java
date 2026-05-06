@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -182,23 +191,42 @@ final class BinaryOp extends LexNode {
                 }
                 isConditional = c.isConditional;
                 noLeaksScope = c.localScope;
-            } else if ((s0 = exprType0.objectSize()) == Type.BOOLEAN
-                    && exprType2.objectSize() == Type.BOOLEAN) {
-                if (sym != LexTerm.XOR && sym != LexTerm.BITOR
-                        && sym != LexTerm.BITAND) {
-                    fatalError(c, "Illegal boolean logical operator");
+            } else {
+                // Slice 18c: unbox wrapper operands for arithmetic /
+                // bitwise / shift / boolean-logical (XOR/BITOR/BITAND on
+                // Boolean wrappers). Runs after the string-concat path,
+                // so `s + Integer` already wrapped the Integer via
+                // String.valueOf and won't be touched here.
+                if (Main.dict.javaVersion >= JavaVersion.JLS_50) {
+                    Term n0 = Autobox.forceUnbox(c, terms[0]);
+                    if (n0 != null) {
+                        terms[0] = n0;
+                        exprType0 = n0.exprType();
+                    }
+                    Term n2 = Autobox.forceUnbox(c, terms[2]);
+                    if (n2 != null) {
+                        terms[2] = n2;
+                        exprType2 = n2.exprType();
+                    }
                 }
-            } else if (s0 >= Type.VOID
-                    || s0 <= Type.BOOLEAN
-                    || (s2 = exprType2.objectSize()) >= Type.VOID
-                    || s2 <= Type.BOOLEAN
-                    || ((s0 >= Type.FLOAT || s2 >= Type.FLOAT) && (sym == LexTerm.XOR
-                            || sym == LexTerm.BITOR
-                            || sym == LexTerm.BITAND
-                            || sym == LexTerm.FILLSHIFT_RIGHT
-                            || sym == LexTerm.SHIFT_RIGHT || sym == LexTerm.SHIFT_LEFT))) {
-                fatalError(c,
-                        "Inappropriate type of value in numeric expression");
+                if ((s0 = exprType0.objectSize()) == Type.BOOLEAN
+                        && exprType2.objectSize() == Type.BOOLEAN) {
+                    if (sym != LexTerm.XOR && sym != LexTerm.BITOR
+                            && sym != LexTerm.BITAND) {
+                        fatalError(c, "Illegal boolean logical operator");
+                    }
+                } else if (s0 >= Type.VOID
+                        || s0 <= Type.BOOLEAN
+                        || (s2 = exprType2.objectSize()) >= Type.VOID
+                        || s2 <= Type.BOOLEAN
+                        || ((s0 >= Type.FLOAT || s2 >= Type.FLOAT) && (sym == LexTerm.XOR
+                                || sym == LexTerm.BITOR
+                                || sym == LexTerm.BITAND
+                                || sym == LexTerm.FILLSHIFT_RIGHT
+                                || sym == LexTerm.SHIFT_RIGHT || sym == LexTerm.SHIFT_LEFT))) {
+                    fatalError(c,
+                            "Inappropriate type of value in numeric expression");
+                }
             }
             constVal2 = terms[2].evaluateConstValue();
             if (constVal2 == null

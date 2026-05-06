@@ -18,9 +18,18 @@ public final class Autobox
 
  static int twoBoxes(Integer x, Integer y)
  {
-  int xi = x;
-  int yi = y;
-  return xi + yi;
+  return x + y;        // arithmetic-on-wrappers: unbox both operands
+ }
+
+ static boolean compare(Integer x, Integer y)
+ {
+  return x < y;        // ordering on wrappers: unbox both
+ }
+
+ static int firstObject(Object... xs)
+ {
+  Integer first = (Integer) xs[0];
+  return first;
  }
 
  public static void main(String[] args)
@@ -37,10 +46,14 @@ public final class Autobox
   Integer wrapped = boxIt(7);   // arg autobox: int -> Integer
   int unwrapped = unboxArg(33); // arg autobox: int -> Integer (formal)
   int paired = twoBoxes(10, 20);// arg autobox at both formal positions
+  boolean ord = compare(3, 9);  // arg autobox + ordering unbox
+  int firstOf = firstObject(1, 2, 3);  // varargs trailing autobox
   System.out.println(b);
   System.out.println(f);
   System.out.println(wrapped);
   System.out.println(unwrapped);
   System.out.println(paired);
+  System.out.println(ord);
+  System.out.println(firstOf);
  }
 }

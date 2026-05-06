@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -76,6 +85,33 @@ final class RelationalOp extends LexNode {
             terms[2].processPass1(c);
             c.unionBranch(oldBranch);
             exprType2 = terms[2].exprType();
+            // Slice 18c: unbox wrappers for relational / equality. Two
+            // reference operands in == / != stay as reference equality
+            // (JLS) — including the `Integer == null` case, which must
+            // NOT unbox the Integer. Only unbox when the OTHER side is
+            // a genuine primitive, OR when the operator is ordering
+            // (< <= > >=).
+            if (Main.dict.javaVersion >= JavaVersion.JLS_50) {
+                int s0pre = exprType0.objectSize();
+                int s2pre = exprType2.objectSize();
+                boolean isEq = (sym == LexTerm.EQ || sym == LexTerm.NE);
+                boolean s0IsPrim = Autobox.isPrimitive(s0pre);
+                boolean s2IsPrim = Autobox.isPrimitive(s2pre);
+                if (s0pre >= Type.CLASSINTERFACE && (!isEq || s2IsPrim)) {
+                    Term n = Autobox.forceUnbox(c, terms[0]);
+                    if (n != null) {
+                        terms[0] = n;
+                        exprType0 = n.exprType();
+                    }
+                }
+                if (s2pre >= Type.CLASSINTERFACE && (!isEq || s0IsPrim)) {
+                    Term n = Autobox.forceUnbox(c, terms[2]);
+                    if (n != null) {
+                        terms[2] = n;
+                        exprType2 = n.exprType();
+                    }
+                }
+            }
             int s0 = exprType0.objectSize();
             int s2 = exprType2.objectSize();
             if (s0 < Type.CLASSINTERFACE && s0 != Type.NULLREF ? (s0 != Type.BOOLEAN ? s0 == Type.VOID
