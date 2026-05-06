@@ -3863,14 +3863,33 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term Identifier() {
 		Term z;
 		z = Empty.term;
-		if (t.kind == 7) {
+		if (t.kind == 7 || t.kind == 1) {
 			Get();
-			z = new LexTerm(LexTerm.ID, token.val);
-		} else if (t.kind == 1) {
-			Get();
+			// Slice 35: `_` was reserved as an identifier in JLS 9
+			// (JEP 213). A single hook here covers declarators,
+			// references, parameters, lambda params, and catch params
+			// since JCGO routes all of them through Identifier().
+			// Skipped for files in the bundled stdlib (classpath-0.93
+			// and goclsp) — those are upstream sources we don't
+			// rewrite, and they predate the Java 9 ban; they'd fail
+			// the gate even though no user code triggered the issue.
+			if ("_".equals(token.val)
+					&& Main.dict.javaVersion >= JavaVersion.JLS_90
+					&& !isStdlibSource()) {
+				SemError("`_` is reserved and is not allowed as an "
+					+ "identifier (got -source "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
 			z = new LexTerm(LexTerm.ID, token.val);
 		} else Error(156);
 		return z;
+	}
+
+	private static boolean isStdlibSource() {
+		String fn = Scanner.err != null ? Scanner.err.fileName : null;
+		if (fn == null) return false;
+		return fn.indexOf("classpath-0.93") >= 0
+			|| fn.indexOf("goclsp") >= 0;
 	}
 
 	private static Term TypeDeclarationSeq() {

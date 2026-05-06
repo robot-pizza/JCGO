@@ -112,6 +112,33 @@ run_negative() {
     fi
 }
 
+# Slice 35: reverse-gate fixtures — legal at $ver, BANNED at a higher
+# source level. Used for features that were valid in earlier Java but
+# became reserved/illegal later (e.g. `_` as identifier in Java 9+).
+run_reverse_negative() {
+    ver=$1; cls=$2; banAt=$3
+    outdir="$OUTROOT/java$ver/${cls}_revneg"
+    mkdir -p "$outdir"
+    if java -Xss1M -jar jcgo.jar -source "$banAt" -d "$outdir" \
+            -src "examples/java$ver" $SRCS "$cls" >"$outdir/stdout" 2>&1; then
+        neg_fail=$((neg_fail + 1))
+        echo "  REV NEG FAIL: java$ver $cls translated under -source $banAt (ban missing)"
+    elif grep -q "is reserved" "$outdir/stdout"; then
+        neg_pass=$((neg_pass + 1))
+        echo "  pass: java$ver $cls (-source $banAt rejects)"
+    else
+        neg_fail=$((neg_fail + 1))
+        echo "  REV NEG FAIL: java$ver $cls (-source $banAt) — error wasn't a reserved-id ban"
+        sed -n 's/^/    /p' "$outdir/stdout" | head -3
+    fi
+}
+
+# Reverse-gate registry: `rev_<ver>` lists fixtures, and
+# rev_<ver>_<class>_banned_at gives the source level where the fixture
+# should fail.
+rev_8="UnderscoreId"
+rev_8_UnderscoreId_banned_at=9
+
 for v in $versions; do
     dir="examples/java$v"
     [ -d "$dir" ] || continue
@@ -127,6 +154,15 @@ for v in $versions; do
         for cls in $neg_list; do
             [ -f "$dir/$cls.java" ] || continue
             run_negative "$v" "$cls" "$prev"
+        done
+    fi
+    eval "rev_list=\$rev_$v"
+    if [ -n "$rev_list" ]; then
+        for cls in $rev_list; do
+            [ -f "$dir/$cls.java" ] || continue
+            eval "banAt=\$rev_${v}_${cls}_banned_at"
+            [ -n "$banAt" ] || continue
+            run_reverse_negative "$v" "$cls" "$banAt"
         done
     fi
 done
