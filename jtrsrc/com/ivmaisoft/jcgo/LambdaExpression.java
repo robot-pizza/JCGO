@@ -86,6 +86,12 @@ final class LambdaExpression extends LexNode {
             return;
         }
 
+        // Slice 24i: rewrite bare `this` in the body so it binds to
+        // the enclosing class instance (JLS 15.27.2), not the
+        // synthesized anonymous lambda class.
+        if (c.currentClass != null) {
+            LambdaSynthesis.rewriteBareThis(terms[1], c.currentClass);
+        }
         Term classBody = LambdaSynthesis.buildClassBody(sam, terms[0],
                 terms[1], bodyIsBlock);
         Term typeTerm = new ClassOrIfaceType(qualifiedName(iface.name()));

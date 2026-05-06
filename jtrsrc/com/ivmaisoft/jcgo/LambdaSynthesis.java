@@ -33,6 +33,40 @@ final class LambdaSynthesis {
     }
 
     /**
+     * Slice 24i: rewrites bare `this` in the lambda body to refer to
+     * the enclosing class instance (`OuterClass.this`). JLS 15.27.2
+     * says lambdas don't introduce a new `this` — they inherit the
+     * enclosing one. Without this rewrite, JCGO's anonymous-class
+     * lift makes bare `this` resolve to the synthesized lambda class
+     * itself, which doesn't have the user's fields.
+     *
+     * Mutates the body tree in place. Skips anonymous inner classes
+     * (any InstanceCreation with a classBody) and nested
+     * ClassDeclarations — they introduce their own `this` scope.
+     */
+    static void rewriteBareThis(Term node, ClassDefinition outerClass) {
+        if (!node.notEmpty() || !(node instanceof LexNode)) return;
+        if (node instanceof InstanceCreation
+                || node instanceof ClassDeclaration
+                || node instanceof IfaceDeclaration) {
+            return;
+        }
+        LexNode ln = (LexNode) node;
+        for (int i = 0; i < ln.terms.length; i++) {
+            Term child = ln.terms[i];
+            if (child instanceof This) {
+                This t = (This) child;
+                if (!t.terms[0].notEmpty()) {
+                    ln.terms[i] = new This(
+                            new ClassOrIfaceType(outerClass));
+                    continue;
+                }
+            }
+            rewriteBareThis(child, outerClass);
+        }
+    }
+
+    /**
      * Returns a class-body Term suitable for use as the third argument
      * of a 3-arg `new InstanceCreation(type, args, classBody)` call.
      */

@@ -39,22 +39,21 @@ public final class Lambda
   return x -> x * m;
  }
 
- // Slice 24h: lambda inside an instance method capturing enclosing
- // instance state. The lambda's synthesized anonymous class is
- // non-static, so JCGO's outerThisRef machinery wires up a
- // `this$N` reference to the enclosing Counter instance. Bare
- // `this` inside a lambda body still refers to the anon class
- // itself (proper JLS semantics would rewrite to outer `this`,
- // which JCGO can't do without an AST walk over the body) — the
- // user spells `Counter.this.field` explicitly for now.
+ // Slice 24h/24i: lambda inside an instance method capturing
+ // enclosing instance state via either `OuterClass.this.field` or
+ // bare `this.field`. Slice 24i added a bare-`this` rewrite during
+ // lambda synthesis so JLS 15.27.2 semantics hold (lambda inherits
+ // the enclosing `this` rather than introducing a new one).
  static final class Counter
  {
   final int seed;
   Counter(int seed) { this.seed = seed; }
   void run()
   {
-   IntOp shift = x -> x + Counter.this.seed;
-   System.out.println(shift.apply(3));
+   IntOp shiftQualified = x -> x + Counter.this.seed;
+   System.out.println(shiftQualified.apply(3));
+   IntOp shiftBare = x -> x + this.seed;
+   System.out.println(shiftBare.apply(7));
   }
  }
 
