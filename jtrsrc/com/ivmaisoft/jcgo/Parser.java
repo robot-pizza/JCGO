@@ -2865,6 +2865,9 @@ d : new PrimaryFieldAccess(a, c));
 			if (looksLikeRecord()) {
 				Get();
 				z = RecordDeclaration();
+			} else if (looksLikeEnum()) {
+				Get();
+				z = EnumDeclaration();
 			} else {
 				z = ConstrMethodFieldDecl();
 			}
@@ -3115,6 +3118,9 @@ d : new PrimaryFieldAccess(a, c));
 		} else if (looksLikeRecord()) {
 			Get();
 			z = RecordDeclaration();
+		} else if (looksLikeEnum()) {
+			Get();
+			z = EnumDeclaration();
 		} else Error(152);
 		return z;
 	}
@@ -3123,6 +3129,80 @@ d : new PrimaryFieldAccess(a, c));
 	private static boolean looksLikeRecord() {
 		return t.kind == 1 && "record".equals(t.val)
 			&& peek(2).kind == 1 && peek(3).kind == 11;
+	}
+
+	// Enums (Java 5): "enum Identifier { " or "enum Identifier implements".
+	// `enum` is a contextual keyword in this fork — Scanner still emits it
+	// as kind 1 (identifier), so detection is by val.
+	private static boolean looksLikeEnum() {
+		if (t.kind != 1 || !"enum".equals(t.val)) return false;
+		if (peek(2).kind != 1) return false;
+		int k3 = peek(3).kind;
+		return k3 == 28 || k3 == 26;  // `{` or `implements`
+	}
+
+	private static Term EnumDeclaration() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+			SemError("enum declaration requires -source 5 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Term name = Identifier();
+		Term implementsList = Empty.newTerm();
+		if (t.kind == 26) {
+			implementsList = ImplementsTypes();
+		}
+		Expect(28);
+		ObjVector constants = new ObjVector();
+		// Parse comma-separated constant identifiers. MVP: zero-arg
+		// constants only — `RED(args)` and constants with anonymous
+		// bodies are deferred to slice 19b.
+		if (t.kind == 1) {
+			constants.addElement(t.val);
+			Get();
+			while (t.kind == 27) {
+				Get();
+				if (t.kind == 9 || t.kind == 29) break; // trailing comma
+				if (t.kind != 1) {
+					SemError("enum constant identifier expected");
+					break;
+				}
+				constants.addElement(t.val);
+				Get();
+			}
+		}
+		// Optional `;` followed by class body members — MVP: require
+		// either no semicolon or only a semicolon-then-`}`.
+		if (t.kind == 9) {
+			Get();
+			if (t.kind != 29) {
+				SemError("enum body members not yet supported in this slice");
+			}
+		}
+		Expect(29);
+
+		String enumName = name.dottedName();
+		Term body = EnumSynthesis.buildBody(enumName, constants);
+		Term extendsTerm = new ClassOrIfaceType(qualifiedNameTermFor(
+				Names.JAVA_LANG_ENUM));
+		Term classDecl = new ClassDeclaration(name, extendsTerm,
+			implementsList, body);
+		Term modifiers = new Seq(new AccModifier(AccModifier.STATIC),
+			new AccModifier(AccModifier.FINAL));
+		return new TypeDeclaration(modifiers, classDecl);
+	}
+
+	private static Term qualifiedNameTermFor(String dotted) {
+		Term qn = null;
+		int idx = dotted.length();
+		while (idx > 0) {
+			int prev = dotted.lastIndexOf('.', idx - 1);
+			String part = dotted.substring(prev + 1, idx);
+			Term lt = new LexTerm(LexTerm.ID, part);
+			qn = qn == null ? new QualifiedName(lt, Empty.newTerm())
+				: new QualifiedName(lt, qn);
+			idx = prev;
+		}
+		return qn;
 	}
 
 	private static Term RecordDeclaration() {
