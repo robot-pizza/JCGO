@@ -2440,10 +2440,50 @@ d : new PrimaryFieldAccess(a, c));
 			z = SwitchExpressionParse();
 		} else if (looksLikeLambda()) {
 			z = LambdaParse();
+		} else if (looksLikeMethodRef()) {
+			z = MethodRefParse();
 		} else if (StartOf(1)) {
 			z = JavaExpression();
 		} else Error(141);
 		return z;
+	}
+
+	// Slice 23c (Java 8): method reference detection.
+	//   id :: id          (e.g. Integer::parseInt)
+	//   id :: new         (e.g. Foo::new)
+	private static boolean looksLikeMethodRef() {
+		if (t.kind != 1) return false;
+		if (peek(2).kind != 57 || peek(3).kind != 57) return false;
+		int k4 = peek(4).kind;
+		return k4 == 1 || k4 == 102; // id or `new`
+	}
+
+	private static Term MethodRefParse() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+			SemError("method reference requires -source 8 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Term receiver = new Expression(new QualifiedName(
+			new LexTerm(LexTerm.ID, t.val), Empty.newTerm()));
+		Get();          // receiver id
+		Expect(57);     // `:`
+		Expect(57);     // `:`
+		boolean isCtor = false;
+		String methodName;
+		if (t.kind == 102) {
+			isCtor = true;
+			methodName = "<init>";
+			Get();
+		} else {
+			if (t.kind != 1) {
+				SemError("expected method name after ::");
+				methodName = "?";
+			} else {
+				methodName = t.val;
+				Get();
+			}
+		}
+		return new MethodReference(receiver, methodName, isCtor);
 	}
 
 	// Slice 23 (Java 8): lambda detection.
