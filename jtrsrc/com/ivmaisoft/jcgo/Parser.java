@@ -2144,14 +2144,18 @@ d : new PrimaryFieldAccess(a, c));
 		// Slice 31: `throw switch (...) {...};` lifts to a switch
 		// statement where each arm is itself a throw of the arm's
 		// expression — no temp needed.
+		// Slice 37: pattern-switch arms route through a $matched-flag
+		// chain (liftPatternThrowSwitch).
 		if (t.kind == 53) {
 			Term se = SwitchExpressionParse();
 			Expect(9);
-			if (se instanceof SwitchExpression
-					&& !SwitchExpressionLifter.anyPatternCases(
-							(SwitchExpression) se)) {
-				return SwitchExpressionLifter.liftThrowSwitch(
-					(SwitchExpression) se);
+			if (se instanceof SwitchExpression) {
+				SwitchExpression sw = (SwitchExpression) se;
+				if (SwitchExpressionLifter.anyPatternCases(sw)) {
+					return SwitchExpressionLifter
+						.liftPatternThrowSwitch(sw);
+				}
+				return SwitchExpressionLifter.liftThrowSwitch(sw);
 			}
 			return new ThrowStatement(se);
 		}

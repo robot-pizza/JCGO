@@ -301,6 +301,87 @@ final class SwitchExpressionLifter {
         return new SwitchStatement(se.getDiscriminant(), caseSeq);
     }
 
+    /**
+     * Slice 37: pattern-switch in throw position. Builds the same
+     * $matched-flag chain as liftPatternSwitch but each arm THROWS
+     * its body expression instead of assigning into a target temp.
+     * The flag is technically unused (throws exit) but it's needed
+     * for the case where a pattern matches but its `when` guard
+     * fails — we want to fall through to the next arm rather than
+     * throw nothing, and the $matched-style chain handles that
+     * naturally (the inner if-guard short-circuits, control returns
+     * to the outer if(!$matched), and the next arm gets a chance).
+     */
+    static Term liftPatternThrowSwitch(SwitchExpression se) {
+        ObjVector arrowCases = new ObjVector();
+        flattenCases(se.getCases(), arrowCases);
+        String matchedName = "$jcgoMatched$" + (nextMatchedId++);
+        Term matchedDecl = new ExprStatement(new LocalVariableDecl(
+                new PrimitiveType(Type.BOOLEAN),
+                new VariableDeclarator(
+                        new VariableIdentifier(new LexTerm(LexTerm.ID,
+                                matchedName)),
+                        Empty.newTerm(),
+                        new LexTerm(LexTerm.FALSE, "false"))));
+        Term out = matchedDecl;
+        for (int i = 0; i < arrowCases.size(); i++) {
+            SwitchExprArrowCase arrow = (SwitchExprArrowCase) arrowCases
+                    .elementAt(i);
+            Term guarded = buildPatternThrowCaseStmt(arrow, matchedName,
+                    se.getDiscriminant());
+            out = new Seq(out, guarded);
+        }
+        return out;
+    }
+
+    private static Term buildPatternThrowCaseStmt(SwitchExprArrowCase arrow,
+            String matchedName, Term discriminant) {
+        Term notMatched = new UnaryExpression(
+                new LexTerm(LexTerm.NOT, "!"),
+                new Expression(new QualifiedName(
+                        new LexTerm(LexTerm.ID, matchedName),
+                        Empty.newTerm())));
+        Term coreBody = buildPatternThrowCoreBody(arrow, discriminant);
+        return new IfThenElse(new Expression(notMatched), coreBody,
+                Empty.newTerm());
+    }
+
+    private static Term buildPatternThrowCoreBody(SwitchExprArrowCase arrow,
+            Term discriminant) {
+        Term throwingBody = throwArmBody(arrow);
+        if (!arrow.isPattern()) {
+            return throwingBody;
+        }
+        if (arrow.getGuard() != null) {
+            throwingBody = new IfThenElse(
+                    new Expression(arrow.getGuard()),
+                    throwingBody, Empty.newTerm());
+        }
+        InstanceOf iof;
+        if (arrow.getRecordPattern() != null) {
+            RecordPattern rp = arrow.getRecordPattern();
+            iof = new InstanceOf(discriminant, rp.getType(),
+                    Empty.newTerm());
+            iof.setRecordPattern(rp);
+        } else {
+            iof = new InstanceOf(discriminant,
+                    arrow.getPatternType(), Empty.newTerm());
+            iof.setBindingName(arrow.getPatternBinding());
+        }
+        return new IfThenElse(new Expression(iof), throwingBody,
+                Empty.newTerm());
+    }
+
+    private static Term throwArmBody(SwitchExprArrowCase arrow) {
+        Term body = arrow.getBody();
+        int kind = arrow.getBodyKind();
+        if (kind == SwitchExprArrowCase.BODY_THROW) return body;
+        if (kind == SwitchExprArrowCase.BODY_EXPR) {
+            return new ThrowStatement(body);
+        }
+        return rewriteYieldsToThrow(body);
+    }
+
     private static void buildThrowingCase(SwitchExprArrowCase arrow,
             ObjVector out) {
         Term body = arrow.getBody();

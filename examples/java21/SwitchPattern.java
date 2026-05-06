@@ -30,10 +30,26 @@ public final class SwitchPattern
   };
  }
 
- public static void main(String[] args)
+ // Slice 37: pattern-switch in throw position. Routes through the
+ // $matched-flag chain so the `when` guard can fall through to the
+ // next arm if it's false.
+ static int strictArea(Shape sh) throws Throwable
+ {
+  if (sh == null)
+   throw switch (sh)
+   {
+    case Circle c when c.r() > 100.0 -> new RuntimeException("big-circle");
+    case Circle c -> new IllegalArgumentException("circle-null?");
+    case Square sq -> new IllegalArgumentException("square-null?");
+   };
+  return (int) area(sh);
+ }
+
+ public static void main(String[] args) throws Throwable
  {
   System.out.println(area(new Circle(2.0)));
   System.out.println(describe(new Circle(3.0)));
   System.out.println(describe(new Square(4.0)));
+  System.out.println(strictArea(new Circle(2.0)));
  }
 }
