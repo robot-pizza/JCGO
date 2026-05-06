@@ -107,6 +107,12 @@ public final class Lambda
   IntOp castInc = (IntOp) x -> x + 100;
   System.out.println(castInc.apply(1));
 
+  // Slice 39: lambda in ternary arms. Target type comes from the
+  // declared variable type via c.currentVarType.
+  boolean cond = true;
+  IntOp ternaryOp = cond ? x -> x + 1 : x -> x - 1;
+  System.out.println(ternaryOp.apply(10));
+
   // Slice 33: lambda / method-ref as method argument — target comes
   // from the called method's formal-parameter type (looked up by
   // unique name+arity on the receiver class).

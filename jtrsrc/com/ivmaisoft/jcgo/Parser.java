@@ -1822,11 +1822,22 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term CondExprTail(Term a) {
 		Term z;
 		Term c, e;
-		c = JavaExpression();
+		// Slice 39: lambda / method-ref in ternary arms. Both arms can
+		// be lambdas (`cond ? () -> x : () -> y`) — the surrounding
+		// context (variable initializer, return, cast, ...) provides
+		// the target functional interface via c.currentVarType, and
+		// CondExpression's processPass1 propagates it to both arms.
+		c = parseTernaryArm(true);
 		Expect(57);
-		e = ConditionalExpression();
+		e = parseTernaryArm(false);
 		z = new CondExpression(a, c, e);
 		return z;
+	}
+
+	private static Term parseTernaryArm(boolean isThen) {
+		if (looksLikeLambda()) return LambdaParse();
+		if (looksLikeMethodRef()) return MethodRefParse();
+		return isThen ? JavaExpression() : ConditionalExpression();
 	}
 
 	private static Term StatementExpression() {
