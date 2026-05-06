@@ -1268,6 +1268,11 @@ d : new PrimaryFieldAccess(a, c));
 			b = ForVarExprInitTail(a);
 		}
 		Expect(9);
+		// Slice 14b: lift `T x = switch (...) {...};` into a Block.
+		if (b != null) {
+			Term lifted = SwitchExpressionLifter.tryLift(b);
+			if (lifted != null) return lifted;
+		}
 		z = new ExprStatement(b != null ? b : a);
 		return z;
 	}
@@ -1434,6 +1439,82 @@ d : new PrimaryFieldAccess(a, c));
 	// non-empty list of case label expressions.
 	private static boolean looksLikeArrow() {
 		return t.kind == 67 && peek(2).kind == 75;
+	}
+
+	private static boolean looksLikeYield() {
+		if (t.kind != 1 || !"yield".equals(t.val)) return false;
+		if (Main.dict.javaVersion < JavaVersion.JLS_140) return false;
+		int k2 = peek(2).kind;
+		// Reject yield used as an identifier in plain assignment or call.
+		return k2 != 46 && k2 != 11 && k2 != 13 && k2 != 27
+			&& k2 != 43 && k2 != 96 && k2 != 97
+			&& k2 != 9;
+	}
+
+	// Switch expression: `switch (E) { (case L1, L2 -> body | default -> body)+ }`
+	private static Term SwitchExpressionParse() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_140) {
+			SemError("switch expression requires -source 14 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Expect(53);
+		Expect(11);
+		Term discr = JavaExpression();
+		Expect(12);
+		Expect(28);
+		ObjVector cases = new ObjVector();
+		while (t.kind == 60 || t.kind == 61) {
+			cases.addElement(parseSwitchExprCase());
+		}
+		Expect(29);
+		Term casesChain = Empty.newTerm();
+		for (int i = cases.size() - 1; i >= 0; i--) {
+			Term cur = (Term) cases.elementAt(i);
+			casesChain = casesChain.notEmpty()
+				? new Seq(cur, casesChain) : cur;
+		}
+		return new SwitchExpression(new Expression(discr), casesChain);
+	}
+
+	private static Term parseSwitchExprCase() {
+		Term labels;
+		if (t.kind == 60) {
+			Get();
+			labels = Empty.newTerm();
+		} else {
+			Expect(61);
+			ObjVector labelList = new ObjVector();
+			labelList.addElement(UnaryExpression());
+			while (t.kind == 27) {
+				Get();
+				labelList.addElement(UnaryExpression());
+			}
+			Term seq = Empty.newTerm();
+			for (int i = labelList.size() - 1; i >= 0; i--) {
+				Term cur = (Term) labelList.elementAt(i);
+				seq = seq.notEmpty() ? new Seq(cur, seq) : cur;
+			}
+			labels = seq;
+		}
+		if (!looksLikeArrow()) {
+			SemError("'->' expected in switch expression case");
+		}
+		Get(); Get();
+		Term body;
+		int bodyKind;
+		if (t.kind == 28) {
+			body = JavaBlock();
+			bodyKind = SwitchExprArrowCase.BODY_BLOCK;
+		} else if (t.kind == 54) {
+			Get();
+			body = ThrowStatement();
+			bodyKind = SwitchExprArrowCase.BODY_THROW;
+		} else {
+			body = JavaExpression();
+			Expect(9);
+			bodyKind = SwitchExprArrowCase.BODY_EXPR;
+		}
+		return new SwitchExprArrowCase(labels, body, bodyKind);
 	}
 
 	private static Term parseArrowCaseTail(ObjVector labels) {
@@ -1978,9 +2059,12 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		d = VariableDeclaratorList();
 		Expect(9);
-		z = new ExprStatement(new LocalVariableDecl(
-		     new AccModifier(AccModifier.FINAL), b, c, d));
-		
+		Term lvd = new LocalVariableDecl(
+		     new AccModifier(AccModifier.FINAL), b, c, d);
+		Term lifted = SwitchExpressionLifter.tryLift(lvd);
+		if (lifted != null) return lifted;
+		z = new ExprStatement(lvd);
+
 		return z;
 	}
 
@@ -2073,6 +2157,13 @@ d : new PrimaryFieldAccess(a, c));
 			break;
 		}
 		case 1: case 2: case 3: case 4: case 5: /* case 7: */ case 11: case 34: case 35: case 36: case 37: case 38: case 39: case 40: case 41: case 42: case 66: case 67: case 94: case 95: case 96: case 97: case 98: case 99: case 100: case 101: case 102: case 103: {
+			if (looksLikeYield()) {
+				Get();
+				Term ye = JavaExpression();
+				Expect(9);
+				z = new YieldStatement(ye);
+				break;
+			}
 			z = ExprOrLabeledStmntOrVarDecl();
 			break;
 		}
@@ -2177,6 +2268,8 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term;
 		if (t.kind == 28) {
 			z = ArrayInitializer();
+		} else if (t.kind == 53) {
+			z = SwitchExpressionParse();
 		} else if (StartOf(1)) {
 			z = JavaExpression();
 		} else Error(141);

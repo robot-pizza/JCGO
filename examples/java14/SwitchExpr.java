@@ -1,5 +1,5 @@
-// JCGO-SKIP: switch expressions with arrow + yield are Java 14 (JEP 361).
-// JCGO doesn't yet parse "case X ->" or "yield" inside switch blocks.
+// Switch expression with yield (Java 14, JEP 361). Slice 14b: lifted
+// into a local variable's initializer.
 
 public final class SwitchExpr
 {

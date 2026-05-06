@@ -46,6 +46,7 @@ prev_for_7=6
 prev_for_8=7
 prev_for_10=9
 prev_for_14=13
+neg_14_b="SwitchExpr"
 prev_for_16=15
 prev_for_17=16
 
@@ -58,7 +59,7 @@ neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
 neg_7="MultiCatch StringSwitch TryWithResources"
 neg_8="DefaultIface"
 neg_10="VarLocal VarFor VarForeach"
-neg_14="SwitchArrow"
+neg_14="SwitchArrow SwitchExpr"
 neg_16="PatternInstanceof Records"
 neg_17="Sealed NonSealed"
 
