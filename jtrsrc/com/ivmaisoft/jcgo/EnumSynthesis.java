@@ -33,6 +33,22 @@ package com.ivmaisoft.jcgo;
  */
 final class EnumSynthesis {
 
+    /**
+     * One declared enum constant — slice 19b. `args` is the parsed
+     * Argument-chain (or Empty.term) from `RED(0xff0000, ...)`. For
+     * zero-arg constants `args` is Empty.term and the constant call
+     * just receives the synthesized (name, ordinal) pair.
+     */
+    static final class EnumConstant {
+        final String name;
+        final Term args;
+
+        EnumConstant(String name, Term args) {
+            this.name = name;
+            this.args = args;
+        }
+    }
+
     private EnumSynthesis() {
     }
 
@@ -40,40 +56,135 @@ final class EnumSynthesis {
      * Returns a synthesized class body for the named enum.
      *
      * @param enumName  simple name of the enum class
-     * @param constants ObjVector of String — the constant identifiers
-     *                  in declaration order
+     * @param constants ObjVector of EnumConstant in declaration order
+     * @param userBody  user-supplied class body members (after the `;`),
+     *                  or Empty.term if none. Constructors found here
+     *                  are rewritten to prepend (String, int) params
+     *                  and call super(name, ordinal); otherwise members
+     *                  pass through verbatim.
      */
-    static Term buildBody(String enumName, ObjVector constants) {
+    static Term buildBody(String enumName, ObjVector constants,
+            Term userBody) {
         ObjVector members = new ObjVector();
 
         for (int i = 0; i < constants.size(); i++) {
-            String constName = (String) constants.elementAt(i);
-            members.addElement(buildConstantField(enumName, constName, i));
+            EnumConstant ec = (EnumConstant) constants.elementAt(i);
+            members.addElement(buildConstantField(enumName, ec, i));
         }
         members.addElement(buildValuesArrayField(enumName, constants));
-        members.addElement(buildCtor(enumName));
+
+        boolean userHasCtor = userBody != null && userBody.notEmpty()
+                && containsConstructor(userBody);
+        if (userHasCtor) {
+            members.addElement(rewriteUserBody(userBody, enumName));
+        } else {
+            members.addElement(buildCtor(enumName));
+            if (userBody != null && userBody.notEmpty()) {
+                members.addElement(userBody);
+            }
+        }
+
         members.addElement(buildValuesMethod(enumName));
         members.addElement(buildValueOfMethod(enumName));
 
         return new Seq(seqOf(members), Empty.newTerm());
     }
 
+    private static boolean containsConstructor(Term node) {
+        if (!node.notEmpty()) return false;
+        if (node instanceof Seq) {
+            Seq s = (Seq) node;
+            return containsConstructor(s.terms[0])
+                    || containsConstructor(s.terms[1]);
+        }
+        if (node instanceof TypeDeclaration) {
+            return ((TypeDeclaration) node).getDeclTerm()
+                    instanceof ConstrDeclaration;
+        }
+        return false;
+    }
+
     /**
-     * `public static final NAME T = new T("NAME", ordinal);`
+     * Walks the user body Seq and rewrites every ConstrDeclaration to
+     * prepend (String $n, int $o) params plus a super($n, $o) call at
+     * the start of its body. Non-ctor members pass through.
      */
-    private static Term buildConstantField(String enumName, String constName,
+    private static Term rewriteUserBody(Term node, String enumName) {
+        if (!node.notEmpty()) return node;
+        if (node instanceof Seq) {
+            Seq s = (Seq) node;
+            return new Seq(rewriteUserBody(s.terms[0], enumName),
+                    rewriteUserBody(s.terms[1], enumName));
+        }
+        if (node instanceof TypeDeclaration) {
+            TypeDeclaration td = (TypeDeclaration) node;
+            Term inner = td.getDeclTerm();
+            if (inner instanceof ConstrDeclaration) {
+                Term newCtor = rewriteCtor((ConstrDeclaration) inner,
+                        enumName);
+                return new TypeDeclaration(td.terms[0], newCtor);
+            }
+        }
+        return node;
+    }
+
+    private static Term rewriteCtor(ConstrDeclaration ctor, String enumName) {
+        Term originalParams = ctor.terms[1];
+        Term originalBody = ctor.terms[3];
+
+        Term nameParam = new FormalParameter(Empty.newTerm(),
+                new ClassOrIfaceType(qualifiedName(Names.JAVA_LANG_STRING)),
+                Empty.newTerm(),
+                new VariableIdentifier(new LexTerm(LexTerm.ID, "$n")),
+                Empty.newTerm());
+        Term ordinalParam = new FormalParameter(Empty.newTerm(),
+                new PrimitiveType(Type.INT),
+                Empty.newTerm(),
+                new VariableIdentifier(new LexTerm(LexTerm.ID, "$o")),
+                Empty.newTerm());
+        Term newParams = FormalParamList.prepend(nameParam,
+                FormalParamList.prepend(ordinalParam, originalParams));
+
+        Term superArgs = new ParameterList(
+                new Argument(new Expression(new QualifiedName(
+                        new LexTerm(LexTerm.ID, "$n"), Empty.newTerm()))),
+                new Argument(new Expression(new QualifiedName(
+                        new LexTerm(LexTerm.ID, "$o"), Empty.newTerm()))));
+        Term superCall = new ExprStatement(new ConstructorCall(
+                Empty.newTerm(), new Super(), superArgs));
+        Term newBody = originalBody.notEmpty()
+                ? new Seq(superCall, originalBody) : superCall;
+
+        return new ConstrDeclaration(ctor.terms[0], newParams,
+                ctor.terms[2], newBody);
+    }
+
+    /**
+     * `public static final T NAME = new T("NAME", ordinal[, userArgs]);`
+     */
+    private static Term buildConstantField(String enumName, EnumConstant ec,
             int ordinal) {
         Term modifiers = new Seq(new AccModifier(AccModifier.PUBLIC),
                 new Seq(new AccModifier(AccModifier.STATIC),
                         new AccModifier(AccModifier.FINAL)));
         Term enumType = simpleType(enumName);
-        Term args = new ParameterList(
-                new Argument(new StringLiteral("\"" + constName + "\"")),
-                new Argument(new IntLiteral(Integer.toString(ordinal))));
+
+        Term nameArg = new Argument(new StringLiteral(
+                "\"" + ec.name + "\""));
+        Term ordinalArg = new Argument(
+                new IntLiteral(Integer.toString(ordinal)));
+        Term args;
+        if (ec.args != null && ec.args.notEmpty()) {
+            args = new ParameterList(nameArg,
+                    new ParameterList(ordinalArg, ec.args));
+        } else {
+            args = new ParameterList(nameArg, ordinalArg);
+        }
+
         Term init = new InstanceCreation(simpleType(enumName), args,
                 Empty.newTerm());
         Term varDeclr = new VariableDeclarator(
-                new VariableIdentifier(new LexTerm(LexTerm.ID, constName)),
+                new VariableIdentifier(new LexTerm(LexTerm.ID, ec.name)),
                 Empty.newTerm(), init);
         Term field = new FieldDeclaration(enumType, Empty.newTerm(),
                 varDeclr);
@@ -92,9 +203,9 @@ final class EnumSynthesis {
                 new DimSpec(Empty.newTerm()));
         Term elements = Empty.newTerm();
         for (int i = constants.size() - 1; i >= 0; i--) {
-            String constName = (String) constants.elementAt(i);
+            EnumConstant ec = (EnumConstant) constants.elementAt(i);
             Term ref = new Expression(new QualifiedName(
-                    new LexTerm(LexTerm.ID, constName), Empty.newTerm()));
+                    new LexTerm(LexTerm.ID, ec.name), Empty.newTerm()));
             Term elem = new ArrElementInit(ref);
             elements = elements.notEmpty()
                     ? new VarInitializers(elem, elements) : elem;

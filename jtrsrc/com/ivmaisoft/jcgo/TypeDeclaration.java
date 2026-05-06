@@ -56,6 +56,14 @@ final class TypeDeclaration extends LexNode {
         declTerm = b;
     }
 
+    Term getDeclTerm() {
+        return declTerm;
+    }
+
+    void setDeclTerm(Term newDeclTerm) {
+        this.declTerm = newDeclTerm;
+    }
+
     void processPass0(Context c) {
         c.modifiers = 0;
         terms[0].processPass0(c);

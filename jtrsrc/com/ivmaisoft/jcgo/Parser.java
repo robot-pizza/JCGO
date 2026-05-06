@@ -3153,12 +3153,11 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		Expect(28);
 		ObjVector constants = new ObjVector();
-		// Parse comma-separated constant identifiers. MVP: zero-arg
-		// constants only — `RED(args)` and constants with anonymous
-		// bodies are deferred to slice 19b.
+		// Parse comma-separated constants. Slice 19b: each may carry a
+		// (args) list to be forwarded to the user-supplied constructor.
+		// Anonymous bodies on constants are still deferred.
 		if (t.kind == 1) {
-			constants.addElement(t.val);
-			Get();
+			constants.addElement(parseEnumConstant());
 			while (t.kind == 27) {
 				Get();
 				if (t.kind == 9 || t.kind == 29) break; // trailing comma
@@ -3166,22 +3165,21 @@ d : new PrimaryFieldAccess(a, c));
 					SemError("enum constant identifier expected");
 					break;
 				}
-				constants.addElement(t.val);
-				Get();
+				constants.addElement(parseEnumConstant());
 			}
 		}
-		// Optional `;` followed by class body members — MVP: require
-		// either no semicolon or only a semicolon-then-`}`.
+		// Optional `;` followed by class body members.
+		Term userBody = Empty.newTerm();
 		if (t.kind == 9) {
 			Get();
 			if (t.kind != 29) {
-				SemError("enum body members not yet supported in this slice");
+				userBody = SemiOrClassBodyDeclSeq();
 			}
 		}
 		Expect(29);
 
 		String enumName = name.dottedName();
-		Term body = EnumSynthesis.buildBody(enumName, constants);
+		Term body = EnumSynthesis.buildBody(enumName, constants, userBody);
 		Term extendsTerm = new ClassOrIfaceType(qualifiedNameTermFor(
 				Names.JAVA_LANG_ENUM));
 		Term classDecl = new ClassDeclaration(name, extendsTerm,
@@ -3189,6 +3187,20 @@ d : new PrimaryFieldAccess(a, c));
 		Term modifiers = new Seq(new AccModifier(AccModifier.STATIC),
 			new AccModifier(AccModifier.FINAL));
 		return new TypeDeclaration(modifiers, classDecl);
+	}
+
+	private static EnumSynthesis.EnumConstant parseEnumConstant() {
+		String constName = t.val;
+		Get();
+		Term args = Empty.term;
+		if (t.kind == 11) {
+			Get();
+			if (StartOf(1)) {
+				args = ArgumentList();
+			}
+			Expect(12);
+		}
+		return new EnumSynthesis.EnumConstant(constName, args);
 	}
 
 	private static Term qualifiedNameTermFor(String dotted) {

@@ -1,9 +1,27 @@
-// Enums (Java 5, JLS 8.9). Slice 19 MVP: zero-arg constants only.
+// Enums (Java 5, JLS 8.9). Slice 19 + 19b: zero-arg constants and
+// constants with constructor args (rewritten to prepend name+ordinal).
 
 public final class Enums
 {
 
  enum Color { RED, GREEN, BLUE }
+
+ enum Light
+ {
+  GREEN(0x00ff00), AMBER(0xffaa00), RED(0xff0000);
+
+  private final int rgb;
+
+  Light(int rgb)
+  {
+   this.rgb = rgb;
+  }
+
+  public int rgb()
+  {
+   return rgb;
+  }
+ }
 
  static String describe(Color c)
  {
@@ -24,5 +42,10 @@ public final class Enums
   System.out.println(all.length);
   Color found = Color.valueOf("BLUE");
   System.out.println(found.ordinal());
+
+  Light amber = Light.AMBER;
+  System.out.println(amber.name());
+  System.out.println(amber.rgb());
+  System.out.println(Light.RED.rgb());
  }
 }
