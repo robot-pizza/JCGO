@@ -23,6 +23,18 @@ public final class Records
   int span() { return hi - lo; }
  }
 
+ // Slice 40: compact canonical constructor — no parens, parameters
+ // come from the record header, implicit `this.x = x` assignments
+ // are appended automatically.
+ record Pair(int a, int b)
+ {
+  Pair
+  {
+   if (a > b) throw new IllegalArgumentException("a > b");
+  }
+  int sum() { return a + b; }
+ }
+
  public static void main(String[] args)
  {
   Point p = new Point(3, 4);
@@ -30,5 +42,8 @@ public final class Records
 
   Range r = new Range(2, 9);
   System.out.println(r.lo() + " .. " + r.hi() + " span=" + r.span());
+
+  Pair pp = new Pair(3, 7);
+  System.out.println(pp.a() + "+" + pp.b() + "=" + pp.sum());
  }
 }

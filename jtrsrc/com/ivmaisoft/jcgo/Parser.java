@@ -3350,6 +3350,8 @@ d : new PrimaryFieldAccess(a, c));
 			} else if (looksLikeEnum()) {
 				Get();
 				z = EnumDeclaration();
+			} else if (looksLikeCompactCtor()) {
+				z = CompactCanonicalCtor();
 			} else {
 				z = ConstrMethodFieldDecl();
 			}
@@ -3720,6 +3722,83 @@ d : new PrimaryFieldAccess(a, c));
 		return qn;
 	}
 
+	// Slice 40: thread record name + header params into the body
+	// parser so MemberDecl can recognize the no-paren compact
+	// canonical constructor form `RecordName { body }`.
+	static String currentRecordName;
+	static Term currentRecordParams;
+
+	private static boolean looksLikeCompactCtor() {
+		if (currentRecordName == null) return false;
+		if (t.kind != 1) return false;
+		if (!currentRecordName.equals(t.val)) return false;
+		return peek(2).kind == 28; // `{` immediately after the name
+	}
+
+	// Builds a regular ConstrDeclaration from the compact form.
+	// `RecordName { user-body }` becomes
+	//   `RecordName(<header params>) { user-body; this.x = x; ... }`
+	// — the implicit field assignments come after the user body.
+	private static Term CompactCanonicalCtor() {
+		Term name = Identifier();
+		Term userBlock = JavaBlock();
+		// userBlock is `Block(LeftBrace, Seq(...), RightBrace)`.
+		// Extract the inner statement seq.
+		Term userStmts = Empty.newTerm();
+		if (userBlock instanceof Block) {
+			Block b = (Block) userBlock;
+			if (b.terms.length >= 2) userStmts = b.terms[1];
+		}
+		Term assigns = buildRecordFieldAssignments(currentRecordParams);
+		Term body = userStmts.notEmpty()
+			? (assigns.notEmpty() ? new Seq(userStmts, assigns) : userStmts)
+			: assigns;
+		// Copy params for the synthesized ctor — parser owns the Term
+		// tree, so a fresh copy avoids aliasing if anything mutates.
+		Term paramsCopy = currentRecordParams;
+		// Return the bare ConstrDeclaration — ClassBodyDecl wraps it
+		// in a TypeDeclaration with whatever modifiers (`public`,
+		// nothing, etc.) the user wrote in front of the compact form.
+		return new ConstrDeclaration(name, paramsCopy,
+			Empty.newTerm(), body);
+	}
+
+	private static Term buildRecordFieldAssignments(Term paramList) {
+		ObjVector params = new ObjVector();
+		flattenFormalParamsForCompactCtor(paramList, params);
+		ObjVector stmts = new ObjVector();
+		for (int i = 0; i < params.size(); i++) {
+			FormalParameter fp = (FormalParameter) params.elementAt(i);
+			String fieldName = fp.terms[3].dottedName();
+			Term thisField = new PrimaryFieldAccess(new This(),
+				new QualifiedName(new LexTerm(LexTerm.ID, fieldName),
+					Empty.newTerm()));
+			Term assign = new Assignment(thisField,
+				new LexTerm(LexTerm.EQUALS, "="),
+				new QualifiedName(new LexTerm(LexTerm.ID, fieldName),
+					Empty.newTerm()));
+			stmts.addElement(new ExprStatement(assign));
+		}
+		Term result = Empty.newTerm();
+		for (int i = stmts.size() - 1; i >= 0; i--) {
+			Term cur = (Term) stmts.elementAt(i);
+			result = result.notEmpty() ? new Seq(cur, result) : cur;
+		}
+		return result;
+	}
+
+	private static void flattenFormalParamsForCompactCtor(Term t,
+			ObjVector out) {
+		if (!t.notEmpty()) return;
+		if (t instanceof FormalParamList) {
+			FormalParamList fpl = (FormalParamList) t;
+			flattenFormalParamsForCompactCtor(fpl.terms[0], out);
+			flattenFormalParamsForCompactCtor(fpl.terms[1], out);
+		} else if (t instanceof FormalParameter) {
+			out.addElement(t);
+		}
+	}
+
 	private static Term RecordDeclaration() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_160) {
 			SemError("record declaration requires -source 16 or higher (got "
@@ -3741,10 +3820,18 @@ d : new PrimaryFieldAccess(a, c));
 		// canonical ctor (ConstrDeclaration with matching arity) is
 		// detected by RecordSynthesis and replaces the synthesized
 		// default. Other members pass through verbatim.
+		// Slice 40: thread the record name + params so MemberDecl can
+		// recognize the compact ctor form.
+		String savedRecordName = currentRecordName;
+		Term savedRecordParams = currentRecordParams;
+		currentRecordName = name.dottedName();
+		currentRecordParams = params;
 		Term userBody = Empty.newTerm();
 		if (t.kind != 29) {
 			userBody = SemiOrClassBodyDeclSeq();
 		}
+		currentRecordName = savedRecordName;
+		currentRecordParams = savedRecordParams;
 		Expect(29);
 		Term body = RecordSynthesis.buildBody(name.dottedName(), params,
 			userBody);
