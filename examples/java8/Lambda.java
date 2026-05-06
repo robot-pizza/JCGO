@@ -26,12 +26,17 @@ public final class Lambda
  }
 
  // Slice 24e: lambda capturing an enclosing-method `final` local.
- // JCGO's existing outerLocals machinery handles explicitly-final
- // captures — the lifter's anonymous class plugs into it without
- // any special handling, since processPass1 runs in the right scope.
  static IntOp makeAdder(final int k)
  {
   return x -> x + k;
+ }
+
+ // Slice 24g: effectively-final capture — `m` isn't declared final
+ // but isn't reassigned either. JCGO's outerLocals filter now
+ // accepts any initialized local/param.
+ static IntOp makeMultiplier(int m)
+ {
+  return x -> x * m;
  }
 
  public static void main(String[] args)
@@ -58,5 +63,8 @@ public final class Lambda
 
   IntOp plus100 = makeAdder(100);
   System.out.println(plus100.apply(5));
+
+  IntOp times7 = makeMultiplier(7);
+  System.out.println(times7.apply(6));
  }
 }

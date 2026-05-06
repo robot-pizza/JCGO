@@ -1298,7 +1298,15 @@ final class ClassDefinition extends ExpressionType {
                 VariableDefinition v = c.currentMethod.getLocalVar((String) en
                         .nextElement());
                 Term.assertCond(v != null);
-                if (v.isFinalVariable() && !v.isUnassigned()) {
+                // Slice 24g: relaxed from the strict explicit-FINAL test
+                // so JLS 8 effectively-final captures (e.g. method
+                // parameters used inside a lambda) work without the
+                // user having to spell `final`. We trust javac to have
+                // already enforced effectively-final at compile time;
+                // JCGO just accepts any initialized local/param into
+                // the synthetic outerLocals list.
+                if (!v.isUnassigned()
+                        && (v.isFinalVariable() || v.isLocalOrParam())) {
                     outerLocals.addElement(v);
                 }
             }
