@@ -34,18 +34,21 @@ package com.ivmaisoft.jcgo;
 final class EnumSynthesis {
 
     /**
-     * One declared enum constant — slice 19b. `args` is the parsed
-     * Argument-chain (or Empty.term) from `RED(0xff0000, ...)`. For
-     * zero-arg constants `args` is Empty.term and the constant call
-     * just receives the synthesized (name, ordinal) pair.
+     * One declared enum constant. `args` is the parsed Argument-chain
+     * (or Empty.term) from `RED(0xff0000, ...)`. `classBody` is the
+     * parsed body Term (slice 19c) — non-empty when the constant has
+     * an anonymous-class body that overrides enum methods. Both are
+     * Empty.term for the simple `RED, GREEN, BLUE` form.
      */
     static final class EnumConstant {
         final String name;
         final Term args;
+        final Term classBody;
 
-        EnumConstant(String name, Term args) {
+        EnumConstant(String name, Term args, Term classBody) {
             this.name = name;
             this.args = args;
+            this.classBody = classBody;
         }
     }
 
@@ -88,6 +91,22 @@ final class EnumSynthesis {
         members.addElement(buildValueOfMethod(enumName));
 
         return new Seq(seqOf(members), Empty.newTerm());
+    }
+
+    /**
+     * Slice 19c: true iff at least one constant has an anonymous-class
+     * body, which means the enum class is implicitly NOT final (since
+     * the constants are runtime subclasses). Caller drops FINAL from
+     * the synthesized modifiers in that case.
+     */
+    static boolean anyConstantHasBody(ObjVector constants) {
+        for (int i = 0; i < constants.size(); i++) {
+            EnumConstant ec = (EnumConstant) constants.elementAt(i);
+            if (ec.classBody != null && ec.classBody.notEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean containsConstructor(Term node) {
@@ -182,7 +201,7 @@ final class EnumSynthesis {
         }
 
         Term init = new InstanceCreation(simpleType(enumName), args,
-                Empty.newTerm());
+                ec.classBody != null ? ec.classBody : Empty.newTerm());
         Term varDeclr = new VariableDeclarator(
                 new VariableIdentifier(new LexTerm(LexTerm.ID, ec.name)),
                 Empty.newTerm(), init);

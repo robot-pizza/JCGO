@@ -3184,8 +3184,13 @@ d : new PrimaryFieldAccess(a, c));
 				Names.JAVA_LANG_ENUM));
 		Term classDecl = new ClassDeclaration(name, extendsTerm,
 			implementsList, body);
-		Term modifiers = new Seq(new AccModifier(AccModifier.STATIC),
-			new AccModifier(AccModifier.FINAL));
+		// Slice 19c: an enum with at least one anonymous-body constant
+		// is implicitly NOT final — the constants are runtime
+		// subclasses (JLS 8.9). Otherwise the default is final.
+		Term modifiers = EnumSynthesis.anyConstantHasBody(constants)
+			? new AccModifier(AccModifier.STATIC)
+			: (Term) new Seq(new AccModifier(AccModifier.STATIC),
+				new AccModifier(AccModifier.FINAL));
 		return new TypeDeclaration(modifiers, classDecl);
 	}
 
@@ -3200,7 +3205,13 @@ d : new PrimaryFieldAccess(a, c));
 			}
 			Expect(12);
 		}
-		return new EnumSynthesis.EnumConstant(constName, args);
+		Term classBody = Empty.term;
+		// Slice 19c: optional `{ ... }` after the constant — anonymous
+		// subclass body that overrides enum methods.
+		if (t.kind == 28) {
+			classBody = ClassBody();
+		}
+		return new EnumSynthesis.EnumConstant(constName, args, classBody);
 	}
 
 	private static Term qualifiedNameTermFor(String dotted) {

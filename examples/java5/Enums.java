@@ -1,5 +1,5 @@
-// Enums (Java 5, JLS 8.9). Slice 19 + 19b: zero-arg constants and
-// constants with constructor args (rewritten to prepend name+ordinal).
+// Enums (Java 5, JLS 8.9). Slices 19 + 19b + 19c: zero-arg constants,
+// constants with constructor args, and constants with anonymous bodies.
 
 public final class Enums
 {
@@ -30,6 +30,20 @@ public final class Enums
   return "other";
  }
 
+ enum Op
+ {
+  PLUS
+  {
+   public int apply(int a, int b) { return a + b; }
+  },
+  TIMES
+  {
+   public int apply(int a, int b) { return a * b; }
+  };
+
+  public abstract int apply(int a, int b);
+ }
+
  public static void main(String[] args)
  {
   Color a = Color.RED;
@@ -47,5 +61,8 @@ public final class Enums
   System.out.println(amber.name());
   System.out.println(amber.rgb());
   System.out.println(Light.RED.rgb());
+
+  System.out.println(Op.PLUS.apply(3, 4));
+  System.out.println(Op.TIMES.apply(3, 4));
  }
 }
