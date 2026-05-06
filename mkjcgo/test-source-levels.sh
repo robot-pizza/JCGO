@@ -56,7 +56,7 @@ prev_for_21=17
 # the matching -source level. Files outside this list run only the
 # positive test (since they may be pre-modern code that translates at
 # any level).
-neg_5="Foreach Varargs StaticImport Annotations AnnotationType"
+neg_5="Foreach Varargs StaticImport Annotations AnnotationType Autobox"
 neg_7="MultiCatch StringSwitch TryWithResources NumericUnderscores"
 neg_8="DefaultIface"
 neg_10="VarLocal VarFor VarForeach"

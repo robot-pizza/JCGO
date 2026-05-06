@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -126,6 +135,16 @@ final class Assignment extends LexNode {
                     v.setStrLiteralValue(strLiteralValueGuess());
                 }
             } else {
+                // Slice 18 (Java 5): autobox/unbox to bridge reference
+                // and primitive sides of an `=` assignment.
+                if (sym == LexTerm.EQUALS) {
+                    Term coerced = Autobox.coerce(c, terms[2], s0);
+                    if (coerced != terms[2]) {
+                        terms[2] = coerced;
+                        exprType2 = coerced.exprType();
+                        s2 = exprType2.objectSize();
+                    }
+                }
                 actualType2 = exprType2;
                 if (v != null && sym == LexTerm.EQUALS && v.isLocalOrParam()) {
                     v.setUnassigned(false);

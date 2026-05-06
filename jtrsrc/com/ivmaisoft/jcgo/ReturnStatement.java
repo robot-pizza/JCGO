@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -68,6 +77,13 @@ final class ReturnStatement extends LexNode {
             terms[0].processPass1(c);
             int s0 = terms[0].exprType().objectSize();
             int s1 = md.exprType().objectSize();
+            // Slice 18 (Java 5): autobox/unbox return value to method's
+            // declared return type.
+            Term coerced = Autobox.coerce(c, terms[0], s1);
+            if (coerced != terms[0]) {
+                terms[0] = coerced;
+                s0 = terms[0].exprType().objectSize();
+            }
             if (s0 == Type.BOOLEAN ? s1 != Type.BOOLEAN
                     : s0 >= Type.CLASSINTERFACE ? s1 < Type.CLASSINTERFACE
                             : s0 >= Type.LONG && s1 < s0) {

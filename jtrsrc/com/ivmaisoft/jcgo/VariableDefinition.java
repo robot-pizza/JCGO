@@ -8,6 +8,15 @@
  */
 
 /*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Modifications are licensed under the same terms as JCGO above:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
+/*
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
@@ -215,6 +224,10 @@ final class VariableDefinition {
 
     boolean hasInitializer() {
         return initializerTerm.notEmpty();
+    }
+
+    Term getInitializerTerm() {
+        return initializerTerm;
     }
 
     ExpressionType exprType() {
@@ -560,6 +573,13 @@ final class VariableDefinition {
                 initializerTerm.processPass1(c);
                 int s0 = initializerTerm.exprType().objectSize();
                 int s1 = resType.objectSize();
+                // Slice 18 (Java 5): autobox/unbox the initializer to the
+                // declared type.
+                Term coerced = Autobox.coerce(c, initializerTerm, s1);
+                if (coerced != initializerTerm) {
+                    initializerTerm = coerced;
+                    s0 = initializerTerm.exprType().objectSize();
+                }
                 if (s0 == Type.BOOLEAN ? s1 != Type.BOOLEAN
                         : s0 >= Type.CLASSINTERFACE ? s1 < Type.CLASSINTERFACE
                                 : s0 >= Type.LONG && s1 < s0) {
