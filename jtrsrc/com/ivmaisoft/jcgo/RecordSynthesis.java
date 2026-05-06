@@ -40,6 +40,20 @@ final class RecordSynthesis {
      * ClassBody convention and constructing the outer ClassDeclaration.
      */
     static Term buildBody(String recordName, Term headerParams) {
+        return buildBody(recordName, headerParams, Empty.newTerm());
+    }
+
+    /**
+     * Slice 29: variant that folds user-supplied record-body members
+     * into the synthesized output. A user-declared canonical ctor
+     * (ConstrDeclaration whose arity matches the header) replaces the
+     * synthesized default — JCGO doesn't auto-prepend the field
+     * assignments yet, so the user is responsible for spelling
+     * `this.x = x` style. Other members (extra methods, fields, static
+     * initializers) pass through verbatim.
+     */
+    static Term buildBody(String recordName, Term headerParams,
+            Term userBody) {
         ObjVector params = new ObjVector();
         flattenFormalParams(headerParams, params);
 
@@ -56,10 +70,49 @@ final class RecordSynthesis {
             members.addElement(buildAccessor(fieldType, fieldName));
         }
         componentsByName.put(recordName, componentInfo);
-        members.addElement(buildCanonicalCtor(recordName, headerParams,
-                params));
+
+        boolean userHasCanonicalCtor = userBody != null
+                && userBody.notEmpty()
+                && containsCanonicalCtor(userBody, recordName, params.size());
+        if (!userHasCanonicalCtor) {
+            members.addElement(buildCanonicalCtor(recordName, headerParams,
+                    params));
+        }
+        if (userBody != null && userBody.notEmpty()) {
+            members.addElement(userBody);
+        }
 
         return new Seq(seqOf(members), Empty.newTerm());
+    }
+
+    private static boolean containsCanonicalCtor(Term node, String name,
+            int arity) {
+        if (!node.notEmpty()) return false;
+        if (node instanceof Seq) {
+            Seq s = (Seq) node;
+            return containsCanonicalCtor(s.terms[0], name, arity)
+                    || containsCanonicalCtor(s.terms[1], name, arity);
+        }
+        if (node instanceof TypeDeclaration) {
+            Term inner = ((TypeDeclaration) node).getDeclTerm();
+            if (inner instanceof ConstrDeclaration) {
+                ConstrDeclaration ctor = (ConstrDeclaration) inner;
+                if (name.equals(ctor.terms[0].dottedName())
+                        && countParams(ctor.terms[1]) == arity) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static int countParams(Term paramList) {
+        if (!paramList.notEmpty()) return 0;
+        if (paramList instanceof FormalParamList) {
+            FormalParamList fpl = (FormalParamList) paramList;
+            return countParams(fpl.terms[0]) + countParams(fpl.terms[1]);
+        }
+        return 1;
     }
 
     private static Term buildField(Term fieldType, String fieldName) {

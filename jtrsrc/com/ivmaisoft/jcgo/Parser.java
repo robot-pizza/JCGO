@@ -3627,10 +3627,17 @@ d : new PrimaryFieldAccess(a, c));
 			implementsList = ImplementsTypes();
 		}
 		Expect(28);
-		// User-supplied body members are allowed but not yet folded into the
-		// synthesis; consume an empty body for slice 11.
+		// Slice 29: parse optional body members. A user-declared
+		// canonical ctor (ConstrDeclaration with matching arity) is
+		// detected by RecordSynthesis and replaces the synthesized
+		// default. Other members pass through verbatim.
+		Term userBody = Empty.newTerm();
+		if (t.kind != 29) {
+			userBody = SemiOrClassBodyDeclSeq();
+		}
 		Expect(29);
-		Term body = RecordSynthesis.buildBody(name.dottedName(), params);
+		Term body = RecordSynthesis.buildBody(name.dottedName(), params,
+			userBody);
 		Term classDecl = new ClassDeclaration(name, Empty.newTerm(),
 			implementsList, body);
 		// Records are implicitly final and (when nested) implicitly static.
