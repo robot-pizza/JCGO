@@ -221,8 +221,8 @@ public class Parser {
 	private static Term ArgumentsOptClassBody(Term b) {
 		Term z;
 		Term d = Empty.term, f = Empty.term;
-		
-		if (StartOf(1)) {
+
+		if (canStartArg()) {
 			d = ArgumentList();
 		}
 		Expect(12);
@@ -430,8 +430,8 @@ new DimSpec(c)));
 	private static Term UnaryWithIdentArgsBody(Term a) {
 		Term z;
 		Term c = Empty.term, e = null, f = null, g = null;
-		
-		if (StartOf(1)) {
+
+		if (canStartArg()) {
 			c = ArgumentList();
 		}
 		Expect(12);
@@ -505,7 +505,7 @@ new DimSpec(c)));
 		Term z;
 		Term e = Empty.term;
 		Expect(11);
-		if (StartOf(1)) {
+		if (canStartArg()) {
 			e = ArgumentList();
 		}
 		Expect(12);
@@ -516,10 +516,10 @@ new DimSpec(c)));
 	private static Term InnerNewInstanceCreation(Term a) {
 		Term z;
 		Term d, f = Empty.term, h = Empty.term;
-		
+
 		d = Identifier();
 		Expect(11);
-		if (StartOf(1)) {
+		if (canStartArg()) {
 			f = ArgumentList();
 		}
 		Expect(12);
@@ -577,7 +577,7 @@ new DimSpec(c)));
 		Term z;
 		Term e = Empty.term;
 		Expect(11);
-		if (StartOf(1)) {
+		if (canStartArg()) {
 			e = ArgumentList();
 		}
 		Expect(12);
@@ -614,6 +614,13 @@ d : new PrimaryFieldAccess(a, c));
 		return z;
 	}
 
+	// Slice 36: gate for `if (StartOf(1)) ArgumentList()` call sites.
+	// Adds `switch` (kind 53) to the regular expression-starter set so
+	// `f(switch (x){...})` actually enters the arg parser.
+	private static boolean canStartArg() {
+		return StartOf(1) || t.kind == 53;
+	}
+
 	private static Term ArgumentList() {
 		Term z;
 		Term a, c = null;
@@ -621,7 +628,12 @@ d : new PrimaryFieldAccess(a, c));
 		// MethodInvocation.processPass1 pre-resolves the receiver/method
 		// to thread the formal parameter type into c.currentVarType
 		// before pass1ing the lambda body.
-		if (looksLikeLambda()) {
+		// Slice 36: also accept switch-expression args. The hoister at
+		// the surrounding statement level pulls them out into a
+		// preamble decl+switch-stmt and replaces the arg with a temp.
+		if (t.kind == 53) {
+			a = SwitchExpressionParse();
+		} else if (looksLikeLambda()) {
 			a = LambdaParse();
 		} else if (looksLikeMethodRef()) {
 			a = MethodRefParse();
@@ -656,7 +668,7 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ExplicitConstrInvoke(Term a, Term c) {
 		Term z;
 		Term e = Empty.term;
-		if (StartOf(1)) {
+		if (canStartArg()) {
 			e = ArgumentList();
 		}
 		Expect(12);
@@ -1370,6 +1382,15 @@ d : new PrimaryFieldAccess(a, c));
 		Term liftedAssign = SwitchExpressionLifter
 			.tryLiftAssign(assignCandidate);
 		if (liftedAssign != null) return liftedAssign;
+		// Slice 36: hoist any switch-expression args inside method
+		// calls (and other sub-expressions) out into preamble decls
+		// + switch-stmts. Wrap the result in a Block when preambles
+		// exist.
+		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(assignCandidate);
+		if (hr.hoisted) {
+			return new Block(new Seq(hr.preambles,
+				new ExprStatement(hr.rewrittenRoot)));
+		}
 		z = new ExprStatement(assignCandidate);
 		return z;
 	}
@@ -2136,6 +2157,13 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		b = JavaExpression();
 		Expect(9);
+		// Slice 36: hoist switch-expression args inside the throw
+		// expression (e.g. `throw new RE("x:" + switch(x){...}));`).
+		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(b);
+		if (hr.hoisted) {
+			return new Block(new Seq(hr.preambles,
+				new ThrowStatement(hr.rewrittenRoot)));
+		}
 		z = new ThrowStatement(b);
 		return z;
 	}
@@ -2187,6 +2215,13 @@ d : new PrimaryFieldAccess(a, c));
 			b = JavaExpression();
 		}
 		Expect(9);
+		// Slice 36: hoist switch-expression args inside the return
+		// expression (e.g. `return f(switch(x){...});`).
+		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(b);
+		if (hr.hoisted) {
+			return new Block(new Seq(hr.preambles,
+				new ReturnStatement(hr.rewrittenRoot)));
+		}
 		z = new ReturnStatement(b);
 		return z;
 	}
@@ -3633,7 +3668,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term args = Empty.term;
 		if (t.kind == 11) {
 			Get();
-			if (StartOf(1)) {
+			if (canStartArg()) {
 				args = ArgumentList();
 			}
 			Expect(12);
