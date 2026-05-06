@@ -1846,6 +1846,10 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term parseTernaryArm(boolean isThen) {
 		if (looksLikeLambda()) return LambdaParse();
 		if (looksLikeMethodRef()) return MethodRefParse();
+		// Slice 43: switch-expression as a ternary arm. The hoister
+		// at the surrounding statement level walks the resulting
+		// CondExpression and lifts the SwitchExpression.
+		if (t.kind == 53) return SwitchExpressionParse();
 		return isThen ? JavaExpression() : ConditionalExpression();
 	}
 

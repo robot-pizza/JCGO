@@ -41,5 +41,12 @@ public final class SwitchArgExpr
   // directly through UnaryWithParaTail.
   long big = (long) switch (day) { case 0 -> 100; default -> 99; };
   System.out.println(big);
+
+  // Slice 43: switch expression as a ternary arm.
+  boolean weekend = day == 0 || day == 6;
+  int rank = weekend
+   ? switch (day) { case 0 -> 70; default -> 71; }
+   : day * 10;
+  System.out.println(rank);
  }
 }
