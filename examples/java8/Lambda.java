@@ -15,10 +15,6 @@ public final class Lambda
   int apply(int a, int b);
  }
 
- // Slice 24d: lambda at the head of a return expression — target type
- // comes from the method's declared return type via md.exprType().
- // Captures don't reach into the synthesized anonymous class yet, so
- // these examples don't reference enclosing locals.
  static IntOp constOp()
  {
   return x -> x + 1;
@@ -27,6 +23,15 @@ public final class Lambda
  static Runnable greeter()
  {
   return () -> System.out.println("hello");
+ }
+
+ // Slice 24e: lambda capturing an enclosing-method `final` local.
+ // JCGO's existing outerLocals machinery handles explicitly-final
+ // captures — the lifter's anonymous class plugs into it without
+ // any special handling, since processPass1 runs in the right scope.
+ static IntOp makeAdder(final int k)
+ {
+  return x -> x + k;
  }
 
  public static void main(String[] args)
@@ -50,5 +55,8 @@ public final class Lambda
   System.out.println(adder.apply(5));
 
   greeter().run();
+
+  IntOp plus100 = makeAdder(100);
+  System.out.println(plus100.apply(5));
  }
 }
