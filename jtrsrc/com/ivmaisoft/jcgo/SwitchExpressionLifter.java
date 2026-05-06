@@ -453,7 +453,12 @@ final class SwitchExpressionLifter {
         SwitchExpression se = (SwitchExpression) a.terms[2];
         String lhsName = a.terms[0].dottedName();
         if (lhsName == null || lhsName.indexOf('.') >= 0) return null;
-        if (anyPatternCases(se)) return null;
+        // Slice 42: pattern arms route through the $matched-flag chain
+        // assigning to lhsName. The lhs is already declared so no
+        // decl-stmt is needed — pass Empty as the first chain element.
+        if (anyPatternCases(se)) {
+            return buildPatternSwitchStmts(se, lhsName, Empty.newTerm());
+        }
         return buildSwitchStmt(se, lhsName);
     }
 

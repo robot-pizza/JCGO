@@ -55,6 +55,15 @@ public final class SwitchPattern
   // Slice 41: pattern-switch as a method-arg — hoister routes
   // through the $matched-flag chain.
   System.out.println(describeWith(new Circle(5.0)));
+
+  // Slice 42: pattern-switch in plain assignment.
+  String label;
+  label = switch (new Square(8.0))
+  {
+   case Circle c -> "c=" + c.r();
+   case Square sq -> "s=" + sq.s();
+  };
+  System.out.println(label);
  }
 
  static String describeWith(Shape sh)
