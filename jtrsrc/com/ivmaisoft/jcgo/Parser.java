@@ -2499,13 +2499,19 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	// Slice 23c (Java 8): method reference detection.
-	//   id :: id          (e.g. Integer::parseInt)
-	//   id :: new         (e.g. Foo::new)
+	//   id (.id)* :: id          (e.g. Integer::parseInt, System.out::println)
+	//   id (.id)* :: new         (e.g. Foo::new)
+	// Slice 24c grew the receiver to a dotted chain.
 	private static boolean looksLikeMethodRef() {
 		if (t.kind != 1) return false;
-		if (peek(2).kind != 57 || peek(3).kind != 57) return false;
-		int k4 = peek(4).kind;
-		return k4 == 1 || k4 == 102; // id or `new`
+		// Walk past id (.id)* to find `::`.
+		int idx = 2;
+		while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+			idx += 2;
+		}
+		if (peek(idx).kind != 57 || peek(idx + 1).kind != 57) return false;
+		int kAfter = peek(idx + 2).kind;
+		return kAfter == 1 || kAfter == 102;
 	}
 
 	private static Term MethodRefParse() {
@@ -2513,9 +2519,25 @@ d : new PrimaryFieldAccess(a, c));
 			SemError("method reference requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		Term receiver = new Expression(new QualifiedName(
-			new LexTerm(LexTerm.ID, t.val), Empty.newTerm()));
-		Get();          // receiver id
+		// Collect dotted-id chain into a QualifiedName; first segment
+		// is the outermost. For `System.out::println` the chain is
+		// QualifiedName("System", QualifiedName("out", Empty)).
+		ObjVector segs = new ObjVector();
+		segs.addElement(new LexTerm(LexTerm.ID, t.val));
+		Get();
+		while (t.kind == 13 && peek(2).kind == 1) {
+			Get();  // `.`
+			segs.addElement(new LexTerm(LexTerm.ID, t.val));
+			Get();  // id
+		}
+		Term qn = Empty.newTerm();
+		for (int i = segs.size() - 1; i >= 0; i--) {
+			qn = qn.notEmpty()
+				? new QualifiedName((Term) segs.elementAt(i), qn)
+				: new QualifiedName((Term) segs.elementAt(i),
+					Empty.newTerm());
+		}
+		Term receiver = new Expression(qn);
 		Expect(57);     // `:`
 		Expect(57);     // `:`
 		boolean isCtor = false;

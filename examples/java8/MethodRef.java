@@ -1,7 +1,6 @@
-// Method references (Java 8, JLS 15.13). Slice 23c MVP: identifier
-// receiver only (e.g. Integer::parseInt, Foo::new). Dotted-receiver
-// forms like System.out::println are deferred — they need fuller
-// receiver-expression parsing.
+// Method references (Java 8, JLS 15.13). Slice 23c handles
+// `Integer::parseInt` and `Foo::new`; slice 24c grew the parser to
+// also accept dotted-id receivers like `System.out::println`.
 
 public final class MethodRef
 {
@@ -14,6 +13,11 @@ public final class MethodRef
  interface Maker
  {
   Box make(int v);
+ }
+
+ interface Sink
+ {
+  void accept(java.lang.Object x);
  }
 
  static final class Box
@@ -32,5 +36,10 @@ public final class MethodRef
   Maker m = Box::new;
   Box b = m.make(7);
   System.out.println(b.get());
+
+  // Dotted-id receiver — `System.out` resolves at pass1 the same way
+  // a qualified static field reference does.
+  Sink s = System.out::println;
+  s.accept("dotted-receiver");
  }
 }
