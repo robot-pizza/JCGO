@@ -49,6 +49,7 @@ prev_for_14=13
 neg_14_b="SwitchExpr"
 prev_for_16=15
 prev_for_17=16
+prev_for_21=17
 
 # Whitelist of (version, classname) pairs that should ALSO be tested
 # negatively. These are fixtures known to depend on a feature gated at
@@ -62,6 +63,7 @@ neg_10="VarLocal VarFor VarForeach"
 neg_14="SwitchArrow SwitchExpr"
 neg_16="PatternInstanceof Records"
 neg_17="Sealed NonSealed"
+neg_21="SwitchPattern"
 
 pass=0
 fail=0

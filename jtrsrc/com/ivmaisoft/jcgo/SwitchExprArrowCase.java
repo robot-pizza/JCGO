@@ -32,9 +32,36 @@ final class SwitchExprArrowCase extends LexNode {
 
     private final int bodyKind;
 
+    // Pattern-case fields (slice 15). Null/0 for constant cases.
+    private Term patternType;
+    private String patternBinding;
+    private Term guard;
+
     SwitchExprArrowCase(Term labels, Term body, int bodyKind) {
         super(labels, body);
         this.bodyKind = bodyKind;
+    }
+
+    void setPattern(Term type, String binding, Term guard) {
+        this.patternType = type;
+        this.patternBinding = binding;
+        this.guard = guard;
+    }
+
+    boolean isPattern() {
+        return patternType != null;
+    }
+
+    Term getPatternType() {
+        return patternType;
+    }
+
+    String getPatternBinding() {
+        return patternBinding;
+    }
+
+    Term getGuard() {
+        return guard;
     }
 
     Term getLabels() {

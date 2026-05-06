@@ -1070,7 +1070,12 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = MultiplicativeExpression();
-		if (t.kind == 66 || t.kind == 67) {
+		// Slice 14a/15: do not eat `- >` as binary subtraction — it is the
+		// `->` arrow in a switch-case label/guard or (future) lambda. Any
+		// real Java `expr - expr` has a unary-expression-starter after the
+		// `-`, never `>`.
+		if ((t.kind == 66 || t.kind == 67)
+				&& !(t.kind == 67 && peek(2).kind == 75)) {
 			b = PlusMinusMultiplicativeExprSeq(a);
 		}
 		z = b != null ? b : a;
@@ -1478,23 +1483,44 @@ d : new PrimaryFieldAccess(a, c));
 
 	private static Term parseSwitchExprCase() {
 		Term labels;
+		Term patternType = null;
+		String patternBinding = null;
+		Term guard = null;
 		if (t.kind == 60) {
 			Get();
 			labels = Empty.newTerm();
 		} else {
 			Expect(61);
-			ObjVector labelList = new ObjVector();
-			labelList.addElement(UnaryExpression());
-			while (t.kind == 27) {
-				Get();
+			// Pattern-case detection (Java 21): `case Type id [when ...] ->`.
+			// Heuristic: identifier followed by identifier with no `,` or
+			// `->` between them suggests a type-pattern label.
+			if (t.kind == 1 && peek(2).kind == 1 && peek(3).kind != 27) {
+				if (Main.dict.javaVersion < JavaVersion.JLS_210) {
+					SemError("pattern switch requires -source 21 or higher (got "
+						+ JavaVersion.format(Main.dict.javaVersion) + ")");
+				}
+				patternType = SimpleType();
+				Term name = Identifier();
+				patternBinding = name.dottedName();
+				labels = Empty.newTerm();
+				if (t.kind == 1 && "when".equals(t.val)) {
+					Get();
+					guard = JavaExpression();
+				}
+			} else {
+				ObjVector labelList = new ObjVector();
 				labelList.addElement(UnaryExpression());
+				while (t.kind == 27) {
+					Get();
+					labelList.addElement(UnaryExpression());
+				}
+				Term seq = Empty.newTerm();
+				for (int i = labelList.size() - 1; i >= 0; i--) {
+					Term cur = (Term) labelList.elementAt(i);
+					seq = seq.notEmpty() ? new Seq(cur, seq) : cur;
+				}
+				labels = seq;
 			}
-			Term seq = Empty.newTerm();
-			for (int i = labelList.size() - 1; i >= 0; i--) {
-				Term cur = (Term) labelList.elementAt(i);
-				seq = seq.notEmpty() ? new Seq(cur, seq) : cur;
-			}
-			labels = seq;
 		}
 		if (!looksLikeArrow()) {
 			SemError("'->' expected in switch expression case");
@@ -1514,7 +1540,12 @@ d : new PrimaryFieldAccess(a, c));
 			Expect(9);
 			bodyKind = SwitchExprArrowCase.BODY_EXPR;
 		}
-		return new SwitchExprArrowCase(labels, body, bodyKind);
+		SwitchExprArrowCase result = new SwitchExprArrowCase(labels, body,
+			bodyKind);
+		if (patternType != null) {
+			result.setPattern(patternType, patternBinding, guard);
+		}
+		return result;
 	}
 
 	private static Term parseArrowCaseTail(ObjVector labels) {

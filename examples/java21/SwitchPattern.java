@@ -1,5 +1,4 @@
-// JCGO-SKIP: pattern matching for switch is Java 21 (JEP 441). JCGO
-// doesn't yet parse type patterns or "when" guards in case labels.
+// Pattern matching for switch (Java 21, JEP 441). Slice 15.
 
 public final class SwitchPattern
 {
@@ -10,12 +9,13 @@ public final class SwitchPattern
 
  static double area(Shape sh)
  {
-  return switch (sh)
+  double a = switch (sh)
   {
    case Circle c -> Math.PI * c.r() * c.r();
    case Square sq when sq.s() > 0 -> sq.s() * sq.s();
    case Square sq -> 0.0;
   };
+  return a;
  }
 
  public static void main(String[] args)

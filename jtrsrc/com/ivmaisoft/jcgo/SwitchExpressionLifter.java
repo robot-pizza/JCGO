@@ -32,6 +32,8 @@ final class SwitchExpressionLifter {
      * Block. Caller should substitute that Block in place of the
      * original ExprStatement(LocalVariableDecl).
      */
+    private static int nextMatchedId = 0;
+
     static Term tryLift(Term localVarDecl) {
         if (!(localVarDecl instanceof LocalVariableDecl)) {
             return null;
@@ -62,10 +64,15 @@ final class SwitchExpressionLifter {
         }
         Term declStmt = new ExprStatement(plainDecl);
 
-        // Build the case chain for the switch statement.
         Term casesChain = se.getCases();
         ObjVector arrowCases = new ObjVector();
         flattenCases(casesChain, arrowCases);
+
+        if (anyPatternCase(arrowCases)) {
+            return liftPatternSwitch(declStmt, se.getDiscriminant(),
+                    arrowCases, varName);
+        }
+
         ObjVector emittedCases = new ObjVector();
         for (int i = 0; i < arrowCases.size(); i++) {
             SwitchExprArrowCase arrow = (SwitchExprArrowCase) arrowCases
@@ -79,6 +86,146 @@ final class SwitchExpressionLifter {
         // shares the enclosing block's scope — the user expects the
         // variable to be visible after the switch.
         return new Seq(declStmt, switchStmt);
+    }
+
+    private static boolean anyPatternCase(ObjVector cases) {
+        for (int i = 0; i < cases.size(); i++) {
+            if (((SwitchExprArrowCase) cases.elementAt(i)).isPattern()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Pattern-switch desugar (slice 15). Uses a synthetic boolean
+     * $matched flag to enforce first-match-wins across cases that may
+     * overlap (e.g. two `case Square sq` cases differing only in their
+     * `when` guards).
+     *
+     *   T target;
+     *   boolean $matched_N = false;
+     *   if (!$matched_N) { if (discr instanceof T1 v1) {
+     *      [if (guard1)] { target = body1; $matched_N = true; } } }
+     *   if (!$matched_N) { if (discr instanceof T2 v2) {
+     *      [if (guard2)] { target = body2; $matched_N = true; } } }
+     *   if (!$matched_N) { target = defaultBody; }
+     */
+    private static Term liftPatternSwitch(Term declStmt, Term discriminant,
+            ObjVector arrowCases, String varName) {
+        String matchedName = "$jcgoMatched$" + (nextMatchedId++);
+        Term matchedDecl = new ExprStatement(new LocalVariableDecl(
+                new PrimitiveType(Type.BOOLEAN),
+                new VariableDeclarator(
+                        new VariableIdentifier(new LexTerm(LexTerm.ID,
+                                matchedName)),
+                        Empty.newTerm(),
+                        new LexTerm(LexTerm.FALSE, "false"))));
+        Term out = new Seq(declStmt, matchedDecl);
+        for (int i = 0; i < arrowCases.size(); i++) {
+            SwitchExprArrowCase arrow = (SwitchExprArrowCase) arrowCases
+                    .elementAt(i);
+            Term guarded = buildPatternCaseStmt(arrow, varName, matchedName,
+                    discriminant);
+            out = new Seq(out, guarded);
+        }
+        return out;
+    }
+
+    private static Term buildPatternCaseStmt(SwitchExprArrowCase arrow,
+            String varName, String matchedName, Term discriminant) {
+        Term notMatched = new UnaryExpression(
+                new LexTerm(LexTerm.NOT, "!"),
+                new Expression(new QualifiedName(
+                        new LexTerm(LexTerm.ID, matchedName),
+                        Empty.newTerm())));
+        Term coreBody = buildPatternCoreBody(arrow, varName, matchedName,
+                discriminant);
+        return new IfThenElse(new Expression(notMatched), coreBody,
+                Empty.newTerm());
+    }
+
+    /**
+     * For a pattern case, produces the inner body that runs when
+     * !$matched. For a default case (no pattern, empty labels), the
+     * body unconditionally assigns to target and sets $matched.
+     */
+    private static Term buildPatternCoreBody(SwitchExprArrowCase arrow,
+            String varName, String matchedName, Term discriminant) {
+        Term setMatched = new ExprStatement(new Assignment(
+                new Expression(new QualifiedName(
+                        new LexTerm(LexTerm.ID, matchedName),
+                        Empty.newTerm())),
+                new LexTerm(LexTerm.EQUALS, "="),
+                new LexTerm(LexTerm.TRUE, "true")));
+
+        if (!arrow.isPattern()) {
+            // default case
+            return assignBodySeq(arrow, varName, setMatched);
+        }
+
+        Term assigningBody = assignBodySeq(arrow, varName, setMatched);
+
+        if (arrow.getGuard() != null) {
+            assigningBody = new IfThenElse(
+                    new Expression(arrow.getGuard()),
+                    assigningBody, Empty.newTerm());
+        }
+
+        InstanceOf iof = new InstanceOf(discriminant,
+                arrow.getPatternType(), Empty.newTerm());
+        iof.setBindingName(arrow.getPatternBinding());
+        return new IfThenElse(new Expression(iof), assigningBody,
+                Empty.newTerm());
+    }
+
+    /**
+     * Translates the case body and appends the matched-flag assignment.
+     */
+    private static Term assignBodySeq(SwitchExprArrowCase arrow,
+            String varName, Term setMatched) {
+        int kind = arrow.getBodyKind();
+        Term body = arrow.getBody();
+        if (kind == SwitchExprArrowCase.BODY_THROW) {
+            // Throw exits — no assignment, no flag set.
+            return body;
+        }
+        if (kind == SwitchExprArrowCase.BODY_EXPR) {
+            return new Seq(
+                    new ExprStatement(buildAssign(varName, body)),
+                    setMatched);
+        }
+        // BODY_BLOCK: rewrite Yield → assign + setMatched.
+        return rewriteYieldsForPattern(body, varName, setMatched);
+    }
+
+    private static Term rewriteYieldsForPattern(Term node, String varName,
+            Term setMatched) {
+        if (!node.notEmpty()) {
+            return node;
+        }
+        if (node instanceof YieldStatement) {
+            Term expr = ((YieldStatement) node).getExpression();
+            return new Seq(
+                    new ExprStatement(buildAssign(varName, expr)),
+                    setMatched);
+        }
+        if (node instanceof Block) {
+            Block b = (Block) node;
+            if (b.terms.length >= 2) {
+                Term newBody = rewriteYieldsForPattern(b.terms[1], varName,
+                        setMatched);
+                return new Block(newBody);
+            }
+            return node;
+        }
+        if (node instanceof Seq) {
+            Seq s = (Seq) node;
+            return new Seq(
+                    rewriteYieldsForPattern(s.terms[0], varName, setMatched),
+                    rewriteYieldsForPattern(s.terms[1], varName, setMatched));
+        }
+        return node;
     }
 
     private static void flattenCases(Term t, ObjVector out) {
