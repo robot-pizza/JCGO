@@ -81,6 +81,7 @@ public class Parser {
 					peekedTokens[i] = peekedTokens[i + 1];
 				}
 				peekedTokens[--peekedCount] = null;
+				peekedTokens[peekedCount] = null;
 			} else {
 				t = Scanner.Scan();
 			}
@@ -90,16 +91,23 @@ public class Parser {
 		}
 	}
 
-	// Multi-token lookahead extension (Path B, slice 1: foreach detection).
-	// peek(1) returns t (the standard Coco/R lookahead). peek(n) for n>=2 reads
-	// ahead non-destructively from Scanner; the buffered tokens are consumed by
-	// subsequent Get() calls so the parse state is preserved.
-	private static final Token[] peekedTokens = new Token[3];
+	// Multi-token lookahead extension (Path B, slice 1: foreach detection;
+	// extended in slice 23b for parenthesized-lambda detection which needs
+	// unbounded peek to scan past the matching `)`).
+	// peek(1) returns t (the standard Coco/R lookahead). peek(n) for n>=2
+	// reads ahead non-destructively from Scanner; the buffered tokens are
+	// consumed by subsequent Get() calls so the parse state is preserved.
+	private static Token[] peekedTokens = new Token[8];
 	private static int peekedCount = 0;
 
 	private static Token peek(int n) {
 		if (n == 1) return t;
 		while (peekedCount < n - 1) {
+			if (peekedCount >= peekedTokens.length) {
+				Token[] grown = new Token[peekedTokens.length * 2];
+				for (int i = 0; i < peekedCount; i++) grown[i] = peekedTokens[i];
+				peekedTokens = grown;
+			}
 			Token tk;
 			do { tk = Scanner.Scan(); } while (tk.kind > maxT);
 			peekedTokens[peekedCount++] = tk;
@@ -2438,18 +2446,37 @@ d : new PrimaryFieldAccess(a, c));
 		return z;
 	}
 
-	// Slice 23 (Java 8): lambda detection. MVP supports `() -> body` and
-	// `id -> body`; the multi-arg parenthesized form needs deeper
-	// lookahead than peek can deliver and is deferred.
+	// Slice 23 (Java 8): lambda detection.
+	//   id -> body            (3-token peek)
+	//   () -> body            (4-token peek)
+	//   (id, id, ...) -> body (variable-depth peek; slice 23b grew peek
+	//                          to handle this — we walk past the
+	//                          matching `)` then check for `->`)
 	private static boolean looksLikeLambda() {
-		// `() -> ...`: kinds 11, 12, 67, 75
 		if (t.kind == 11 && peek(2).kind == 12 && peek(3).kind == 67
 				&& peek(4).kind == 75) {
 			return true;
 		}
-		// `id -> ...`: kinds 1, 67, 75
 		if (t.kind == 1 && peek(2).kind == 67 && peek(3).kind == 75) {
 			return true;
+		}
+		if (t.kind == 11 && peek(2).kind == 1) {
+			// Look for `(id, id, ...)` followed by `->`.
+			int idx = 3;
+			while (true) {
+				Token tk = peek(idx);
+				if (tk == null || tk.kind == 0) return false;
+				if (tk.kind == 27) { // `,`
+					if (peek(idx + 1).kind != 1) return false;
+					idx += 2;
+					continue;
+				}
+				if (tk.kind == 12) { // `)`
+					return peek(idx + 1).kind == 67
+						&& peek(idx + 2).kind == 75;
+				}
+				return false;
+			}
 		}
 		return false;
 	}
@@ -2462,8 +2489,28 @@ d : new PrimaryFieldAccess(a, c));
 		Term params;
 		if (t.kind == 11) {
 			Get();          // `(`
+			if (t.kind == 12) {
+				params = Empty.newTerm();
+			} else {
+				ObjVector ids = new ObjVector();
+				ids.addElement(new LexTerm(LexTerm.ID, t.val));
+				Get();
+				while (t.kind == 27) {
+					Get();
+					if (t.kind != 1) {
+						SemError("expected lambda parameter identifier");
+						break;
+					}
+					ids.addElement(new LexTerm(LexTerm.ID, t.val));
+					Get();
+				}
+				params = Empty.newTerm();
+				for (int i = ids.size() - 1; i >= 0; i--) {
+					Term lt = (Term) ids.elementAt(i);
+					params = params.notEmpty() ? new Seq(lt, params) : lt;
+				}
+			}
 			Expect(12);     // `)`
-			params = Empty.newTerm();
 		} else {
 			// Single unparenthesized identifier param.
 			params = new LexTerm(LexTerm.ID, t.val);

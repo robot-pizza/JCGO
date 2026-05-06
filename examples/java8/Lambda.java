@@ -1,8 +1,6 @@
-// Lambdas (Java 8, JEP 126). Slice 23 MVP: lambda only as the
-// initializer of a variable declaration, where the declared type
-// names the target functional interface explicitly. Single-arg
-// `id ->` and zero-arg `() ->` forms only — multi-param `(a, b) ->`
-// is deferred until peek-depth or backtracking is added.
+// Lambdas (Java 8, JEP 126). Slices 23 + 23b: single-arg `id ->`,
+// zero-arg `() ->`, and multi-arg `(a, b, ...) ->`. Lambda still has
+// to sit in a variable initializer with an explicit target interface.
 
 public final class Lambda
 {
@@ -10,6 +8,11 @@ public final class Lambda
  interface IntOp
  {
   int apply(int x);
+ }
+
+ interface IntBinaryOp
+ {
+  int apply(int a, int b);
  }
 
  public static void main(String[] args)
@@ -23,5 +26,10 @@ public final class Lambda
 
   IntOp twice = x -> { return x * 2; };
   System.out.println(twice.apply(7));
+
+  IntBinaryOp add = (a, b) -> a + b;
+  IntBinaryOp mul = (a, b) -> a * b;
+  System.out.println(add.apply(2, 3));
+  System.out.println(mul.apply(4, 5));
  }
 }
