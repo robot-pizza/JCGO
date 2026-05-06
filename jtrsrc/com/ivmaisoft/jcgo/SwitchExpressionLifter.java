@@ -268,6 +268,78 @@ final class SwitchExpressionLifter {
     }
 
     /**
+     * Slice 31: lift `throw switch (...) {...};`. Each arm becomes a
+     * throw statement directly — no temp variable, no method-return-
+     * type plumbing. Yield arms (block bodies) get their yields
+     * rewritten into throws of the yielded expression.
+     */
+    static Term liftThrowSwitch(SwitchExpression se) {
+        ObjVector arrowCases = new ObjVector();
+        flattenCases(se.getCases(), arrowCases);
+        ObjVector emittedCases = new ObjVector();
+        for (int i = 0; i < arrowCases.size(); i++) {
+            SwitchExprArrowCase arrow = (SwitchExprArrowCase) arrowCases
+                    .elementAt(i);
+            buildThrowingCase(arrow, emittedCases);
+        }
+        Term caseSeq = seqOf(emittedCases);
+        return new SwitchStatement(se.getDiscriminant(), caseSeq);
+    }
+
+    private static void buildThrowingCase(SwitchExprArrowCase arrow,
+            ObjVector out) {
+        Term body = arrow.getBody();
+        int kind = arrow.getBodyKind();
+        Term effectiveBody;
+        if (kind == SwitchExprArrowCase.BODY_THROW) {
+            effectiveBody = body;
+        } else if (kind == SwitchExprArrowCase.BODY_EXPR) {
+            effectiveBody = new ThrowStatement(body);
+        } else {
+            // BODY_BLOCK: rewrite each Yield to a Throw of the yielded
+            // expression.
+            effectiveBody = rewriteYieldsToThrow(body);
+        }
+        ObjVector labels = new ObjVector();
+        flattenLabels(arrow.getLabels(), labels);
+        if (labels.size() == 0) {
+            out.addElement(new CaseStatement(effectiveBody));
+            return;
+        }
+        int n = labels.size();
+        for (int i = 0; i < n - 1; i++) {
+            out.addElement(new CaseStatement(
+                    new Expression((Term) labels.elementAt(i)),
+                    Empty.newTerm()));
+        }
+        out.addElement(new CaseStatement(
+                new Expression((Term) labels.elementAt(n - 1)),
+                effectiveBody));
+    }
+
+    private static Term rewriteYieldsToThrow(Term node) {
+        if (!node.notEmpty()) return node;
+        if (node instanceof YieldStatement) {
+            return new ThrowStatement(
+                    ((YieldStatement) node).getExpression());
+        }
+        if (node instanceof Block) {
+            Block b = (Block) node;
+            if (b.terms.length >= 2) {
+                Term newBody = rewriteYieldsToThrow(b.terms[1]);
+                return new Block(newBody);
+            }
+            return node;
+        }
+        if (node instanceof Seq) {
+            Seq s = (Seq) node;
+            return new Seq(rewriteYieldsToThrow(s.terms[0]),
+                    rewriteYieldsToThrow(s.terms[1]));
+        }
+        return node;
+    }
+
+    /**
      * Slice 22b: parse-time lift for `lhs = switch (...) {...};` where
      * lhs is a plain identifier already in scope. The LHS gives us
      * everything we need (no temp); each arm becomes a `lhs = val;

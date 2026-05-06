@@ -2104,6 +2104,20 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ThrowStatement() {
 		Term z;
 		Term b;
+		// Slice 31: `throw switch (...) {...};` lifts to a switch
+		// statement where each arm is itself a throw of the arm's
+		// expression — no temp needed.
+		if (t.kind == 53) {
+			Term se = SwitchExpressionParse();
+			Expect(9);
+			if (se instanceof SwitchExpression
+					&& !SwitchExpressionLifter.anyPatternCases(
+							(SwitchExpression) se)) {
+				return SwitchExpressionLifter.liftThrowSwitch(
+					(SwitchExpression) se);
+			}
+			return new ThrowStatement(se);
+		}
 		b = JavaExpression();
 		Expect(9);
 		z = new ThrowStatement(b);

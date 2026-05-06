@@ -38,7 +38,20 @@ public final class SwitchExprReturn
   return k;
  }
 
- public static void main(String[] args)
+ // Slice 31: `throw switch(...) {...};`. Each arm becomes a throw
+ // statement directly — no temp needed.
+ static int validate(int day) throws Throwable
+ {
+  if (day < 0 || day > 6)
+   throw switch (day)
+   {
+    case -1 -> new IllegalArgumentException("negative-1");
+    default -> new RuntimeException("out-of-range:" + day);
+   };
+  return day;
+ }
+
+ public static void main(String[] args) throws Throwable
  {
   System.out.println(rank(0));
   System.out.println(rank(3));
@@ -48,5 +61,6 @@ public final class SwitchExprReturn
   System.out.println(kind(0));
   System.out.println(kind(2));
   System.out.println(kind(8));
+  System.out.println(validate(3));
  }
 }
