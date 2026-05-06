@@ -1,4 +1,5 @@
-// Text blocks (Java 15, JEP 378). Slice 20.
+// Text blocks (Java 15, JEP 378). Slice 20 + 20b: indentation strip,
+// `\s` for explicit space, and `\<line terminator>` for line continuation.
 
 public final class TextBlock
 {
@@ -12,5 +13,15 @@ public final class TextBlock
                 }
                 """;
   System.out.println(json);
+
+  String spaced = """
+                  end-with-spaces:\s\s\s
+                  """;
+  System.out.println(spaced);
+
+  String continued = """
+                     one \
+                     line""";
+  System.out.println(continued);
  }
 }

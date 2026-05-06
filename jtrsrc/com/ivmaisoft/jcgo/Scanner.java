@@ -824,11 +824,48 @@ public class Scanner {
 		}
 
 		String processed = postProcessTextBlock(raw.toString());
+		// Slice 20b: text-block-specific escape processing (JEP 378):
+		// `\s` → space, `\<line terminator>` → suppress newline. Done
+		// AFTER incidental-whitespace strip and BEFORE re-encoding as
+		// a regular string-literal token (where standard escapes like
+		// `\n`/`\t` are handled later by StringLiteral.normalizeStr).
+		processed = processTextBlockEscapes(processed);
 		String encoded = encodeAsStringLiteral(processed);
 		tk.kind = 5; // STRING
 		tk.str = encoded;
 		tk.val = encoded;
 		return tk;
+	}
+
+	private static String processTextBlockEscapes(String s) {
+		if (s.indexOf('\\') < 0) return s;
+		StringBuffer out = new StringBuffer(s.length());
+		int n = s.length();
+		int i = 0;
+		while (i < n) {
+			char c = s.charAt(i);
+			if (c == '\\' && i + 1 < n) {
+				char next = s.charAt(i + 1);
+				if (next == 's') {
+					out.append(' ');
+					i += 2;
+					continue;
+				}
+				if (next == '\n') {
+					// `\<LF>` — line continuation, suppress newline.
+					i += 2;
+					continue;
+				}
+				if (next == '\r') {
+					i += 2;
+					if (i < n && s.charAt(i) == '\n') i++;
+					continue;
+				}
+			}
+			out.append(c);
+			i++;
+		}
+		return out.toString();
 	}
 
 	// JLS 3.10.6 step 2: split into lines, drop trailing whitespace,
