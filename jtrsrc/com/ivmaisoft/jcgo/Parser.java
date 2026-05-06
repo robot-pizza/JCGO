@@ -259,6 +259,11 @@ public class Parser {
 		Term z;
 		Term b;
 		b = QualifiedIdentifier();
+		// Slice 24: `new Foo<...>(args)` — consume + erase the type args.
+		// Also handles the diamond `<>` (zero-content angle pair).
+		if (t.kind == 73) {
+			consumeGenericArgs();
+		}
 		z = NewInstanceBody(new ClassOrIfaceType(b));
 		return z;
 	}
@@ -1876,10 +1881,55 @@ d : new PrimaryFieldAccess(a, c));
 
 	private static Term ExprOrLabeledStmntOrVarDecl() {
 		Term z;
+		// Slice 24: detect a generic-typed local var declaration up front
+		// so `Box<Integer> b = ...;` doesn't get mis-parsed as the
+		// nested-relational `(Box < Integer) > b` chain. Without the
+		// lookahead the angle brackets eat as comparison operators and
+		// pass1 then fails to resolve `Box` as a variable.
+		if (looksLikeGenericVarDecl()) {
+			Term type = SimpleType();
+			Term declrs = VariableDeclaratorList();
+			Expect(9);
+			return new ExprStatement(new LocalVariableDecl(type, declrs));
+		}
 		Term a;
 		a = CondOrExpression();
 		z = ExprOrLabelStmntOrVarDeclTail(a);
 		return z;
+	}
+
+	private static boolean looksLikeGenericVarDecl() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_50) return false;
+		if (t.kind != 1 && t.kind != 7) return false;
+		int idx = 2;
+		while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+			idx += 2;
+		}
+		if (peek(idx).kind != 73) return false;  // no `<`
+		idx++;
+		int depth = 1;
+		while (depth > 0) {
+			Token tk = peek(idx);
+			if (tk == null || tk.kind == 0) return false;
+			int k = tk.kind;
+			if (k == 73) depth++;
+			else if (k == 75) depth--;
+			else if (k == 70) {
+				if (depth < 2) return false;
+				depth -= 2;
+			}
+			else if (k == 69) {
+				if (depth < 3) return false;
+				depth -= 3;
+			}
+			else if (k == 9 || k == 28 || k == 29) return false;
+			idx++;
+			// Bound the search so a runaway scan doesn't burn the
+			// whole file; 256 tokens is plenty for any realistic
+			// generic prefix.
+			if (idx > 256) return false;
+		}
+		return peek(idx).kind == 1;
 	}
 
 	private static Term WhileStatement() {
@@ -2739,11 +2789,51 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term; Term a;
 		if (t.kind == 1 || t.kind == 7) {
 			a = QualifiedIdentifier();
+			// Slice 24 (Java 5): erase generic type arguments. We just
+			// consume `<...>` and ignore the contents — JCGO works in
+			// raw types and doesn't track parameter bindings.
+			if (t.kind == 73) {
+				consumeGenericArgs();
+			}
 			z = new ClassOrIfaceType(a);
 		} else if (StartOf(2)) {
 			z = PrimitiveType();
 		} else Error(145);
 		return z;
+	}
+
+	// Slice 24: balanced consumer for `<...>` type-argument blocks.
+	// The scanner tokenizes `>>` and `>>>` as single SHIFT tokens —
+	// when one closes multiple generic-arg layers the consumer
+	// decrements depth by 2 / 3 accordingly.
+	private static void consumeGenericArgs() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+			SemError("generic type arguments requires -source 5 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Expect(73);  // `<`
+		int depth = 1;
+		while (depth > 0 && t.kind != 0) {
+			if (t.kind == 73) {
+				Get();
+				depth++;
+			} else if (t.kind == 75) {
+				Get();
+				depth--;
+			} else if (t.kind == 70) {
+				// `>>` closes two angle layers in one token.
+				if (depth < 2) break;
+				Get();
+				depth -= 2;
+			} else if (t.kind == 69) {
+				// `>>>` closes three layers.
+				if (depth < 3) break;
+				Get();
+				depth -= 3;
+			} else {
+				Get();
+			}
+		}
 	}
 
 	private static Term FinalModifier() {
@@ -3126,6 +3216,11 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b, c = Empty.term, d;
 		b = Identifier();
+		// Slice 24: `interface Foo<T, U> ...` — consume + erase the
+		// type-parameter list.
+		if (t.kind == 73) {
+			consumeGenericArgs();
+		}
 		if (t.kind == 25) {
 			c = ExtendsInterfaceTypes();
 		}
@@ -3141,6 +3236,11 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b, c = Empty.term, d = Empty.term, e;
 		b = Identifier();
+		// Slice 24: `class Foo<T, U extends Number> ...` — consume +
+		// erase the type-parameter list.
+		if (t.kind == 73) {
+			consumeGenericArgs();
+		}
 		if (t.kind == 25) {
 			c = ExtendsType();
 		}
