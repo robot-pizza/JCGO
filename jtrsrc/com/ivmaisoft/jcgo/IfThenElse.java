@@ -150,14 +150,39 @@ final class IfThenElse extends LexNode {
         while (cur instanceof ParenExpression) {
             cur = ((ParenExpression) cur).terms[0];
         }
-        if (cur instanceof InstanceOf
-                && ((InstanceOf) cur).getBindingName() != null) {
-            return (InstanceOf) cur;
+        if (cur instanceof InstanceOf) {
+            InstanceOf iof = (InstanceOf) cur;
+            if (iof.getBindingName() != null
+                    || iof.getRecordPattern() != null) {
+                return iof;
+            }
+        }
+        return null;
+    }
+
+    private static int nextRecordPatternTmpId = 0;
+
+    private static String recordTypeKey(Term type) {
+        if (type instanceof ClassOrIfaceType) {
+            Term nameTerm = ((ClassOrIfaceType) type).getNameTerm();
+            String full = nameTerm != null ? nameTerm.dottedName() : null;
+            if (full == null) return null;
+            int dot = full.lastIndexOf('.');
+            return dot < 0 ? full : full.substring(dot + 1);
         }
         return null;
     }
 
     private void prependPatternBinding(InstanceOf iof) {
+        if (iof.getRecordPattern() != null) {
+            // Slice 16: destructure record pattern bindings into the
+            // then-branch. Component types come from the record's
+            // declared accessors via RecordSynthesis.componentsByName.
+            Term destructure = expandRecordPattern(iof.getOperand(),
+                    iof.getRecordPattern(), terms[1]);
+            terms[1] = new Block(destructure);
+            return;
+        }
         String name = iof.getBindingName();
         Term typeTerm = iof.getTypeTerm();
         Term dimsTerm = iof.getDimsTerm();
@@ -171,6 +196,53 @@ final class IfThenElse extends LexNode {
         Term decl = new ExprStatement(new LocalVariableDecl(castType,
                 varDeclr));
         terms[1] = new Block(new Seq(decl, terms[1]));
+    }
+
+    private static Term expandRecordPattern(Term operand, RecordPattern rp,
+            Term innerBody) {
+        String tmpName = "$jcgoRP$" + (nextRecordPatternTmpId++);
+        Term castExpr = new CastExpression(rp.getType(), operand);
+        Term tmpDecl = new ExprStatement(new LocalVariableDecl(rp.getType(),
+                new VariableDeclarator(
+                        new VariableIdentifier(
+                                new LexTerm(LexTerm.ID, tmpName)),
+                        Empty.newTerm(), castExpr)));
+
+        String typeName = recordTypeKey(rp.getType());
+        Object[] info = typeName != null
+                ? (Object[]) RecordSynthesis.componentsByName.get(typeName)
+                : null;
+        if (info == null) {
+            // Defensive: should have been populated by record decl.
+            return new Seq(tmpDecl, innerBody);
+        }
+
+        Term result = innerBody;
+        ObjVector comps = rp.getComponents();
+        for (int i = comps.size() - 1; i >= 0; i--) {
+            RecordPattern.Component comp = (RecordPattern.Component) comps
+                    .elementAt(i);
+            String compName = (String) info[i * 2];
+            Term compType = (Term) info[i * 2 + 1];
+            Term receiver = new Expression(new QualifiedName(
+                    new LexTerm(LexTerm.ID, tmpName), Empty.newTerm()));
+            Term accessor = new MethodInvocation(receiver,
+                    new LexTerm(LexTerm.ID, compName), Empty.newTerm());
+            if (comp.isNested()) {
+                result = expandRecordPattern(accessor, comp.nested, result);
+            } else {
+                Term bindingType = comp.bindingType != null
+                        ? comp.bindingType : compType;
+                Term bindingDeclr = new VariableDeclarator(
+                        new VariableIdentifier(
+                                new LexTerm(LexTerm.ID, comp.binding)),
+                        Empty.newTerm(), accessor);
+                Term bindingDecl = new ExprStatement(new LocalVariableDecl(
+                        bindingType, bindingDeclr));
+                result = new Seq(bindingDecl, result);
+            }
+        }
+        return new Seq(tmpDecl, result);
     }
 
     int tokenCount() {

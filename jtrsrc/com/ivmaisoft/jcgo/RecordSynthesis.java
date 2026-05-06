@@ -21,6 +21,15 @@ package com.ivmaisoft.jcgo;
  */
 final class RecordSynthesis {
 
+    /**
+     * Map from simple record class name → array of [componentName, componentType]
+     * pairs (length = 2 * componentCount). Populated by buildBody so the
+     * record-pattern lifter (slice 16) can decode positional sub-patterns into
+     * accessor calls. Simple-name keying is fine for fixtures; cross-package
+     * collisions would need fully-qualified keys later.
+     */
+    static final ObjHashtable componentsByName = new ObjHashtable();
+
     private RecordSynthesis() {
     }
 
@@ -36,13 +45,17 @@ final class RecordSynthesis {
 
         ObjVector members = new ObjVector();
 
+        Object[] componentInfo = new Object[params.size() * 2];
         for (int i = 0; i < params.size(); i++) {
             FormalParameter fp = (FormalParameter) params.elementAt(i);
             Term fieldType = fp.terms[1];
             String fieldName = paramName(fp);
+            componentInfo[i * 2] = fieldName;
+            componentInfo[i * 2 + 1] = fieldType;
             members.addElement(buildField(fieldType, fieldName));
             members.addElement(buildAccessor(fieldType, fieldName));
         }
+        componentsByName.put(recordName, componentInfo);
         members.addElement(buildCanonicalCtor(recordName, headerParams,
                 params));
 

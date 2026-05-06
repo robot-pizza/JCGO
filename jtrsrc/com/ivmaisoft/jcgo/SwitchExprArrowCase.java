@@ -37,6 +37,10 @@ final class SwitchExprArrowCase extends LexNode {
     private String patternBinding;
     private Term guard;
 
+    // Record-pattern field (slice 16). Set instead of patternType+binding
+    // when the case label spells `case Type(...)` rather than `case Type id`.
+    private RecordPattern recordPattern;
+
     SwitchExprArrowCase(Term labels, Term body, int bodyKind) {
         super(labels, body);
         this.bodyKind = bodyKind;
@@ -48,8 +52,17 @@ final class SwitchExprArrowCase extends LexNode {
         this.guard = guard;
     }
 
+    void setRecordPattern(RecordPattern rp, Term guard) {
+        this.recordPattern = rp;
+        this.guard = guard;
+    }
+
     boolean isPattern() {
-        return patternType != null;
+        return patternType != null || recordPattern != null;
+    }
+
+    RecordPattern getRecordPattern() {
+        return recordPattern;
     }
 
     Term getPatternType() {

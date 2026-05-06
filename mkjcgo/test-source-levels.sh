@@ -63,7 +63,7 @@ neg_10="VarLocal VarFor VarForeach"
 neg_14="SwitchArrow SwitchExpr"
 neg_16="PatternInstanceof Records"
 neg_17="Sealed NonSealed"
-neg_21="SwitchPattern"
+neg_21="SwitchPattern RecordPatterns"
 
 pass=0
 fail=0

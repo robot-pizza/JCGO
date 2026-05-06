@@ -963,6 +963,16 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term InstanceOfTail(Term a) {
 		Term z;
 		Term c, d = Empty.term;
+		if (t.kind == 1 && peek(2).kind == 11) {
+			if (Main.dict.javaVersion < JavaVersion.JLS_210) {
+				SemError("record patterns requires -source 21 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			RecordPattern rp = parseRecordPattern();
+			InstanceOf io = new InstanceOf(a, rp.getType(), Empty.newTerm());
+			io.setRecordPattern(rp);
+			return io;
+		}
 		c = SimpleType();
 		if (t.kind == 43) {
 			d = DimSpecSeq();
@@ -1509,6 +1519,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term labels;
 		Term patternType = null;
 		String patternBinding = null;
+		RecordPattern recordPattern = null;
 		Term guard = null;
 		if (t.kind == 60) {
 			Get();
@@ -1526,6 +1537,18 @@ d : new PrimaryFieldAccess(a, c));
 				patternType = SimpleType();
 				Term name = Identifier();
 				patternBinding = name.dottedName();
+				labels = Empty.newTerm();
+				if (t.kind == 1 && "when".equals(t.val)) {
+					Get();
+					guard = JavaExpression();
+				}
+			} else if (t.kind == 1 && peek(2).kind == 11) {
+				// Record pattern (Java 21, JEP 440): `case Type(...)`.
+				if (Main.dict.javaVersion < JavaVersion.JLS_210) {
+					SemError("record patterns requires -source 21 or higher (got "
+						+ JavaVersion.format(Main.dict.javaVersion) + ")");
+				}
+				recordPattern = parseRecordPattern();
 				labels = Empty.newTerm();
 				if (t.kind == 1 && "when".equals(t.val)) {
 					Get();
@@ -1568,8 +1591,50 @@ d : new PrimaryFieldAccess(a, c));
 			bodyKind);
 		if (patternType != null) {
 			result.setPattern(patternType, patternBinding, guard);
+		} else if (recordPattern != null) {
+			result.setRecordPattern(recordPattern, guard);
 		}
 		return result;
+	}
+
+	// Slice 16: parses a record pattern. Caller has already verified the
+	// next two tokens form `Type (`. Result captures the type plus a
+	// positional list of sub-patterns; component name lookup happens at
+	// desugar time via RecordSynthesis.componentsByName.
+	private static RecordPattern parseRecordPattern() {
+		Term type = SimpleType();
+		Expect(11);
+		ObjVector components = new ObjVector();
+		if (t.kind != 12) {
+			components.addElement(parseRecordPatternComponent());
+			while (t.kind == 27) {
+				Get();
+				components.addElement(parseRecordPatternComponent());
+			}
+		}
+		Expect(12);
+		return new RecordPattern(type, components);
+	}
+
+	private static RecordPattern.Component parseRecordPatternComponent() {
+		// Sub-pattern is one of:
+		//   `var id`         — type comes from the record's component
+		//   `Type id`        — explicit binding type
+		//   `Type ( ... )`   — nested record pattern
+		// The `var` form leaves bindingType null; the lifter fills it in
+		// from the enclosing record's componentsByName entry.
+		if (t.kind == 1 && "var".equals(t.val) && peek(2).kind == 1) {
+			Get();
+			Term name = Identifier();
+			return new RecordPattern.Component(null, name.dottedName());
+		}
+		if (t.kind == 1 && peek(2).kind == 11) {
+			RecordPattern nested = parseRecordPattern();
+			return new RecordPattern.Component(nested);
+		}
+		Term type = SimpleType();
+		Term name = Identifier();
+		return new RecordPattern.Component(type, name.dottedName());
 	}
 
 	private static Term parseArrowCaseTail(ObjVector labels) {

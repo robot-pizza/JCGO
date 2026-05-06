@@ -61,6 +61,8 @@ final class InstanceOf extends LexNode {
 
     private String bindingName;
 
+    private RecordPattern recordPattern;
+
     InstanceOf(Term a, Term c, Term d) {
         super(a, c, d);
     }
@@ -71,6 +73,14 @@ final class InstanceOf extends LexNode {
 
     String getBindingName() {
         return bindingName;
+    }
+
+    void setRecordPattern(RecordPattern rp) {
+        this.recordPattern = rp;
+    }
+
+    RecordPattern getRecordPattern() {
+        return recordPattern;
     }
 
     Term getOperand() {

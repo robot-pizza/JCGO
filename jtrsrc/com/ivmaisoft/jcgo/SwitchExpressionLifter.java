@@ -172,9 +172,19 @@ final class SwitchExpressionLifter {
                     assigningBody, Empty.newTerm());
         }
 
-        InstanceOf iof = new InstanceOf(discriminant,
-                arrow.getPatternType(), Empty.newTerm());
-        iof.setBindingName(arrow.getPatternBinding());
+        InstanceOf iof;
+        if (arrow.getRecordPattern() != null) {
+            // Slice 16: record-pattern case — let IfThenElse.prependPatternBinding
+            // do the destructuring work for us by attaching the record pattern.
+            RecordPattern rp = arrow.getRecordPattern();
+            iof = new InstanceOf(discriminant, rp.getType(),
+                    Empty.newTerm());
+            iof.setRecordPattern(rp);
+        } else {
+            iof = new InstanceOf(discriminant,
+                    arrow.getPatternType(), Empty.newTerm());
+            iof.setBindingName(arrow.getPatternBinding());
+        }
         return new IfThenElse(new Expression(iof), assigningBody,
                 Empty.newTerm());
     }
