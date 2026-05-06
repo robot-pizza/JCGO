@@ -1,3 +1,27 @@
+/*
+ * @(#) $(JCGO)/jtrsrc/com/ivmaisoft/jcgo/Parser.java --
+ * a part of JCGO translator.
+ **
+ * Originally generated from jcgo.atg by the (now-lost) jcoco115 fork
+ * of Coco/R for Java. Since the regenerator is unavailable upstream,
+ * this file is now hand-maintained.
+ */
+
+/*
+ * Project: JCGO Modernization (https://github.com/robot-pizza/JCGO)
+ * Copyright (C) 2026 robot.pizza
+ * All rights reserved.
+ *
+ * Hand-edited to lift the JLS-1+2 source-language ceiling: foreach,
+ * varargs, static imports, annotations, multi-catch, strings/arrows in
+ * switch, var, default interface methods, pattern instanceof, records,
+ * sealed types, try-with-resources, switch expressions with yield, and
+ * pattern switch.
+ *
+ * Licensed under the same terms as JCGO upstream:
+ * GPL v2 with the Classpath exception (see COPYING and LICENSE).
+ */
+
 package com.ivmaisoft.jcgo;
 
 public class Parser {
