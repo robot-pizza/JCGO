@@ -239,14 +239,29 @@ final class SwitchExpressionLifter {
     }
 
     /**
+     * Slice 32: pass1-time helper for pattern-switch in non-init
+     * contexts (e.g. `return switch (...) { case Type id -> ...; }`).
+     * Builds the synthesized $matched-flag chain with assignments to
+     * the caller-supplied varName. Caller wraps the result with the
+     * appropriate prelude (decl statement) and trailing use of
+     * varName (e.g. return $tmp).
+     */
+    static Term buildPatternSwitchStmts(SwitchExpression se, String varName,
+            Term declStmt) {
+        ObjVector arrowCases = new ObjVector();
+        flattenCases(se.getCases(), arrowCases);
+        return liftPatternSwitch(declStmt, se.getDiscriminant(),
+                arrowCases, varName);
+    }
+
+    /**
      * Slice 22: pass1-time helper for non-init-context switch-expression
      * lifts (e.g. inside `return switch (...) {...}`). The caller has
      * already declared a temp `varName` of the right type; we just emit
      * the rewritten switch statement that assigns to it.
      *
-     * Pattern-switch arms aren't supported in this entry point yet —
-     * callers using the constant-label form should be in scope (the
-     * pattern path needs the surrounding $matched flag setup).
+     * Pattern-switch arms aren't handled here — see
+     * buildPatternSwitchStmts for the pattern path.
      */
     static Term buildSwitchStmt(SwitchExpression se, String varName) {
         ObjVector arrowCases = new ObjVector();

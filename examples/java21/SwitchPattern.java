@@ -1,4 +1,6 @@
-// Pattern matching for switch (Java 21, JEP 441). Slice 15.
+// Pattern matching for switch (Java 21, JEP 441). Slice 15 +
+// slice 32: pattern-switch in return position is now lifted via
+// the same $matched-flag chain as the variable-init form.
 
 public final class SwitchPattern
 {
@@ -18,8 +20,20 @@ public final class SwitchPattern
   return a;
  }
 
+ // Slice 32: pattern-switch in return position.
+ static String describe(Shape sh)
+ {
+  return switch (sh)
+  {
+   case Circle c -> "circle r=" + c.r();
+   case Square sq -> "square s=" + sq.s();
+  };
+ }
+
  public static void main(String[] args)
  {
   System.out.println(area(new Circle(2.0)));
+  System.out.println(describe(new Circle(3.0)));
+  System.out.println(describe(new Square(4.0)));
  }
 }

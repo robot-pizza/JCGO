@@ -82,13 +82,17 @@ final class ReturnStatement extends LexNode {
                 fatalError(c,
                         "Return expression is not allowed for constructors");
             }
-            // Slice 22: lift `return switch (...) {...};` into a temp
-            // declaration + switch-stmt + return-of-temp. The temp's
-            // type comes from md.exprType() — only available at pass1.
-            if (terms[0] instanceof SwitchExpression
-                    && !SwitchExpressionLifter.anyPatternCases(
-                            (SwitchExpression) terms[0])) {
-                liftSwitchExprReturn(c);
+            // Slice 22 / 32: lift `return switch (...) {...};` into a
+            // temp declaration + switch-stmt + return-of-temp. The
+            // temp's type comes from md.exprType() — only available at
+            // pass1.
+            if (terms[0] instanceof SwitchExpression) {
+                if (SwitchExpressionLifter.anyPatternCases(
+                        (SwitchExpression) terms[0])) {
+                    liftPatternSwitchExprReturn(c);
+                } else {
+                    liftSwitchExprReturn(c);
+                }
             }
             // Slice 24d: a lambda or method reference at the head of
             // the return expression resolves its target type from the
@@ -141,6 +145,26 @@ final class ReturnStatement extends LexNode {
                         Empty.newTerm(), Empty.newTerm())));
         Term switchStmt = SwitchExpressionLifter.buildSwitchStmt(se, tempName);
         liftedPreamble = new Seq(decl, switchStmt);
+        liftedPreamble.processPass1(c);
+        terms[0] = new Expression(new QualifiedName(
+                new LexTerm(LexTerm.ID, tempName), Empty.newTerm()));
+    }
+
+    private void liftPatternSwitchExprReturn(Context c) {
+        SwitchExpression se = (SwitchExpression) terms[0];
+        String tempName = "$jcgoSwRet$" + (nextSwRetId++);
+        Term retTypeTerm = exprTypeToTypeTerm(md.exprType());
+        if (retTypeTerm == null) return;
+        Term decl = new ExprStatement(new LocalVariableDecl(retTypeTerm,
+                new VariableDeclarator(
+                        new VariableIdentifier(
+                                new LexTerm(LexTerm.ID, tempName)),
+                        Empty.newTerm(), Empty.newTerm())));
+        // The pattern-switch lift produces:
+        //   { decl; matchedDecl; if(!$matched) {...}; ... }
+        // We then return $tmp after.
+        liftedPreamble = SwitchExpressionLifter.buildPatternSwitchStmts(
+                se, tempName, decl);
         liftedPreamble.processPass1(c);
         terms[0] = new Expression(new QualifiedName(
                 new LexTerm(LexTerm.ID, tempName), Empty.newTerm()));
