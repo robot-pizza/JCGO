@@ -2430,10 +2430,56 @@ d : new PrimaryFieldAccess(a, c));
 			z = ArrayInitializer();
 		} else if (t.kind == 53) {
 			z = SwitchExpressionParse();
+		} else if (looksLikeLambda()) {
+			z = LambdaParse();
 		} else if (StartOf(1)) {
 			z = JavaExpression();
 		} else Error(141);
 		return z;
+	}
+
+	// Slice 23 (Java 8): lambda detection. MVP supports `() -> body` and
+	// `id -> body`; the multi-arg parenthesized form needs deeper
+	// lookahead than peek can deliver and is deferred.
+	private static boolean looksLikeLambda() {
+		// `() -> ...`: kinds 11, 12, 67, 75
+		if (t.kind == 11 && peek(2).kind == 12 && peek(3).kind == 67
+				&& peek(4).kind == 75) {
+			return true;
+		}
+		// `id -> ...`: kinds 1, 67, 75
+		if (t.kind == 1 && peek(2).kind == 67 && peek(3).kind == 75) {
+			return true;
+		}
+		return false;
+	}
+
+	private static Term LambdaParse() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+			SemError("lambda expression requires -source 8 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Term params;
+		if (t.kind == 11) {
+			Get();          // `(`
+			Expect(12);     // `)`
+			params = Empty.newTerm();
+		} else {
+			// Single unparenthesized identifier param.
+			params = new LexTerm(LexTerm.ID, t.val);
+			Get();
+		}
+		Expect(67);          // `-`
+		Expect(75);          // `>`
+		Term body;
+		boolean bodyIsBlock = false;
+		if (t.kind == 28) {
+			body = JavaBlock();
+			bodyIsBlock = true;
+		} else {
+			body = JavaExpression();
+		}
+		return new LambdaExpression(params, body, bodyIsBlock);
 	}
 
 	private static Term FieldDeclTail(Term a, Term b, Term c) {

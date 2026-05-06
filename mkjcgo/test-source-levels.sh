@@ -59,7 +59,7 @@ prev_for_21=17
 # any level).
 neg_5="Foreach Varargs StaticImport Annotations AnnotationType Autobox Enums"
 neg_7="MultiCatch StringSwitch TryWithResources NumericUnderscores"
-neg_8="DefaultIface"
+neg_8="DefaultIface Lambda"
 neg_9="PrivateIface"
 neg_10="VarLocal VarFor VarForeach"
 neg_14="SwitchArrow SwitchExpr"

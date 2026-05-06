@@ -2655,6 +2655,15 @@ final class ClassDefinition extends ExpressionType {
         return methodDictionary;
     }
 
+    /**
+     * Slice 23: package-private method-signature enumerator so the
+     * LambdaExpression lifter can scan an interface for its single
+     * abstract method without poking into the private dictionary.
+     */
+    Enumeration enumerateMethodSignatures() {
+        return methodDictionary().keys();
+    }
+
     private OrderedMap fieldDictionary() {
         define(null);
         return fieldDictionary;
@@ -3049,7 +3058,7 @@ final class ClassDefinition extends ExpressionType {
         }
     }
 
-    private MethodDefinition getMethodNoInheritance(String sigString) {
+    MethodDefinition getMethodNoInheritance(String sigString) {
         return (MethodDefinition) methodDictionary().get(sigString);
     }
 
