@@ -2018,7 +2018,13 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ReturnStatement() {
 		Term z;
 		Term b = Empty.term;
-		if (StartOf(1)) {
+		// Slice 22: allow `return switch (...) {...};`. SwitchExpression
+		// parsing is gated to JLS 14+ via parseSwitchExprCase's checks;
+		// the actual lift happens at pass1 in ReturnStatement.processPass1
+		// where the method's return type is available.
+		if (t.kind == 53) {
+			b = SwitchExpressionParse();
+		} else if (StartOf(1)) {
 			b = JavaExpression();
 		}
 		Expect(9);

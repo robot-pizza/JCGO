@@ -61,6 +61,14 @@ final class ReturnStatement extends LexNode {
 
     private ExpressionType actualType0;
 
+    // Slice 22: synthesized preamble emitted before the actual return
+    // when the source was `return switch (...) {...};`. Contains a
+    // local-var declaration of the return type plus a switch-statement
+    // that assigns into it. Set during processPass1; read at output.
+    private Term liftedPreamble;
+
+    private static int nextSwRetId = 0;
+
     ReturnStatement(Term b) {
         super(b);
     }
@@ -73,6 +81,14 @@ final class ReturnStatement extends LexNode {
             if (md.isConstructor()) {
                 fatalError(c,
                         "Return expression is not allowed for constructors");
+            }
+            // Slice 22: lift `return switch (...) {...};` into a temp
+            // declaration + switch-stmt + return-of-temp. The temp's
+            // type comes from md.exprType() — only available at pass1.
+            if (terms[0] instanceof SwitchExpression
+                    && !SwitchExpressionLifter.anyPatternCases(
+                            (SwitchExpression) terms[0])) {
+                liftSwitchExprReturn(c);
             }
             terms[0].processPass1(c);
             int s0 = terms[0].exprType().objectSize();
@@ -98,6 +114,64 @@ final class ReturnStatement extends LexNode {
         md.setMethodBranchFrom(c);
     }
 
+    private void liftSwitchExprReturn(Context c) {
+        SwitchExpression se = (SwitchExpression) terms[0];
+        String tempName = "$jcgoSwRet$" + (nextSwRetId++);
+        Term retTypeTerm = exprTypeToTypeTerm(md.exprType());
+        if (retTypeTerm == null) {
+            // Method returns void or a type we can't reify — fall through;
+            // the existing pass1 will report the mismatch.
+            return;
+        }
+        Term decl = new ExprStatement(new LocalVariableDecl(retTypeTerm,
+                new VariableDeclarator(
+                        new VariableIdentifier(
+                                new LexTerm(LexTerm.ID, tempName)),
+                        Empty.newTerm(), Empty.newTerm())));
+        Term switchStmt = SwitchExpressionLifter.buildSwitchStmt(se, tempName);
+        liftedPreamble = new Seq(decl, switchStmt);
+        liftedPreamble.processPass1(c);
+        terms[0] = new Expression(new QualifiedName(
+                new LexTerm(LexTerm.ID, tempName), Empty.newTerm()));
+    }
+
+    private static Term exprTypeToTypeTerm(ExpressionType et) {
+        int dims = et.signatureDimensions();
+        ClassDefinition cd = et.signatureClass();
+        if (cd == null) return null;
+        int sz = cd.objectSize();
+        Term base;
+        if (sz < Type.CLASSINTERFACE && sz != Type.NULLREF) {
+            base = new PrimitiveType(sz);
+        } else if (sz == Type.CLASSINTERFACE) {
+            base = new ClassOrIfaceType(qualifiedNameTerm(cd.name()));
+        } else {
+            return null;
+        }
+        if (dims > 0) {
+            Term ds = Empty.newTerm();
+            for (int i = 0; i < dims; i++) {
+                ds = new DimSpec(ds);
+            }
+            base = new TypeWithDims(base, ds);
+        }
+        return base;
+    }
+
+    private static Term qualifiedNameTerm(String name) {
+        Term qn = null;
+        int idx = name.length();
+        while (idx > 0) {
+            int prev = name.lastIndexOf('.', idx - 1);
+            String part = name.substring(prev + 1, idx);
+            Term lt = new LexTerm(LexTerm.ID, part);
+            qn = qn == null ? new QualifiedName(lt, Empty.newTerm())
+                    : new QualifiedName(lt, qn);
+            idx = prev;
+        }
+        return qn;
+    }
+
     boolean hasTailReturnOrThrow() {
         return true;
     }
@@ -116,6 +190,9 @@ final class ReturnStatement extends LexNode {
 
     void discoverObjLeaks() {
         assertCond(md != null);
+        if (liftedPreamble != null) {
+            liftedPreamble.discoverObjLeaks();
+        }
         terms[0].discoverObjLeaks();
         if (md.exprType().objectSize() >= Type.CLASSINTERFACE) {
             terms[0].setObjLeaks(VariableDefinition.RETURN_VAR);
@@ -123,6 +200,11 @@ final class ReturnStatement extends LexNode {
     }
 
     void processOutput(OutputContext oc) {
+        // Slice 22: emit the synthesized decl + switch-stmt before the
+        // return when we lifted a `return switch (...) {...}` form.
+        if (liftedPreamble != null) {
+            liftedPreamble.processOutput(oc);
+        }
         assertCond(md != null);
         boolean useVar = false;
         boolean needsEnd = false;

@@ -238,6 +238,35 @@ final class SwitchExpressionLifter {
         return node;
     }
 
+    /**
+     * Slice 22: pass1-time helper for non-init-context switch-expression
+     * lifts (e.g. inside `return switch (...) {...}`). The caller has
+     * already declared a temp `varName` of the right type; we just emit
+     * the rewritten switch statement that assigns to it.
+     *
+     * Pattern-switch arms aren't supported in this entry point yet —
+     * callers using the constant-label form should be in scope (the
+     * pattern path needs the surrounding $matched flag setup).
+     */
+    static Term buildSwitchStmt(SwitchExpression se, String varName) {
+        ObjVector arrowCases = new ObjVector();
+        flattenCases(se.getCases(), arrowCases);
+        ObjVector emittedCases = new ObjVector();
+        for (int i = 0; i < arrowCases.size(); i++) {
+            SwitchExprArrowCase arrow = (SwitchExprArrowCase) arrowCases
+                    .elementAt(i);
+            buildCaseStatements(arrow, varName, emittedCases);
+        }
+        Term caseSeq = seqOf(emittedCases);
+        return new SwitchStatement(se.getDiscriminant(), caseSeq);
+    }
+
+    static boolean anyPatternCases(SwitchExpression se) {
+        ObjVector arrowCases = new ObjVector();
+        flattenCases(se.getCases(), arrowCases);
+        return anyPatternCase(arrowCases);
+    }
+
     private static void flattenCases(Term t, ObjVector out) {
         if (!t.notEmpty()) {
             return;
