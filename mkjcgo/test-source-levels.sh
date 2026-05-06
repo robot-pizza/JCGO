@@ -58,7 +58,7 @@ neg_7="MultiCatch StringSwitch"
 neg_8="DefaultIface"
 neg_10="VarLocal VarFor VarForeach"
 neg_16="PatternInstanceof Records"
-neg_17="Sealed"
+neg_17="Sealed NonSealed"
 
 pass=0
 fail=0

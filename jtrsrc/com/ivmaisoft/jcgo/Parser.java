@@ -2357,6 +2357,10 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term AccModifier() {
 		Term z;
 		z = Empty.term;
+		if (looksLikeNonSealed()) {
+			consumeNonSealed();
+			return z;
+		}
 		if (looksLikeSealed()) {
 			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
 				SemError("sealed requires -source 17 or higher (got "
@@ -2481,7 +2485,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = AccModifier();
-		if (StartOf(26) || t.kind == 60 || looksLikeSealed()) {
+		if (StartOf(26) || t.kind == 60 || looksLikeSealedKw()) {
 			b = ModifierSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2491,7 +2495,7 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassBodyDecl() {
 		Term z;
 		Term a = Empty.term, b;
-		if (StartOf(26) || t.kind == 60 || looksLikeSealed()) {
+		if (StartOf(26) || t.kind == 60 || looksLikeSealedKw()) {
 			a = ModifierSeq();
 		}
 		b = MemberDecl();
@@ -2504,7 +2508,7 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term;
 		if (t.kind == 9) {
 			Get();
-		} else if (StartOf(27) || t.kind == 60 || looksLikeSealed()
+		} else if (StartOf(27) || t.kind == 60 || looksLikeSealedKw()
 				|| looksLikeRecord()) {
 			z = ClassBodyDecl();
 		} else Error(150);
@@ -2515,7 +2519,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = SemiOrClassBodyDecl();
-		if (StartOf(28) || t.kind == 60 || looksLikeSealed()
+		if (StartOf(28) || t.kind == 60 || looksLikeSealedKw()
 				|| looksLikeRecord()) {
 			b = SemiOrClassBodyDeclSeq();
 		}
@@ -2607,6 +2611,24 @@ d : new PrimaryFieldAccess(a, c));
 		return t.kind == 1 && "sealed".equals(t.val);
 	}
 
+	private static boolean looksLikeNonSealed() {
+		return t.kind == 1 && "non".equals(t.val)
+			&& peek(2).kind == 67
+			&& peek(3).kind == 1 && "sealed".equals(peek(3).val);
+	}
+
+	private static boolean looksLikeSealedKw() {
+		return looksLikeSealed() || looksLikeNonSealed();
+	}
+
+	private static void consumeNonSealed() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+			SemError("non-sealed requires -source 17 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		Get(); Get(); Get();
+	}
+
 	private static boolean looksLikePermits() {
 		return t.kind == 1 && "permits".equals(t.val);
 	}
@@ -2623,6 +2645,10 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassModifier() {
 		Term z;
 		z = Empty.term;
+		if (looksLikeNonSealed()) {
+			consumeNonSealed();
+			return z;
+		}
 		if (looksLikeSealed()) {
 			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
 				SemError("sealed requires -source 17 or higher (got "
@@ -2762,7 +2788,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term a, b = null;
 		a = ClassModifier();
 		if ((StartOf(29) && !(t.kind == 10 && peek(2).kind == 24))
-				|| looksLikeSealed()) {
+				|| looksLikeSealedKw()) {
 			b = ClassModifierSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -2773,7 +2799,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a = Empty.term, b;
 		if ((StartOf(29) && !(t.kind == 10 && peek(2).kind == 24))
-				|| looksLikeSealed()) {
+				|| looksLikeSealedKw()) {
 			a = ClassModifierSeq();
 		}
 		b = ClassDeclOrInterfaceDecl();
