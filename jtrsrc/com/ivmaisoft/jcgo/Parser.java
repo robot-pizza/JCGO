@@ -2952,6 +2952,13 @@ d : new PrimaryFieldAccess(a, c));
 			Get();
 			a2 = QualifiedIdentifier();
 		}
+		// Slice 47: erase generic args on the return / field type —
+		// `List<T>` or `Map.Entry<K, V>`. Slice 24 already handles
+		// generic args inside SimpleType, but the field/method decl
+		// head bypasses SimpleType so we need to consume them here.
+		if (t.kind == 73) {
+			consumeGenericArgs();
+		}
 		if (t.kind == 43) {
 			b = DimSpecSeq();
 		}
@@ -2990,7 +2997,11 @@ d : new PrimaryFieldAccess(a, c));
 		z = Empty.term;
 		if (t.kind == 11) {
 			z = ConstructorDeclBody(a);
-		} else if (StartOf(23)) {
+		} else if (StartOf(23) || t.kind == 73) {
+			// Slice 47 (Java 7+): generic return / field type at the
+			// method/field decl head — `List<T> asList(...)` or
+			// `Map<K, V> m;`. Routed through MethodDeclOrFieldDeclBody
+			// which now consumes `<...>` after the leading qualifier.
 			z = MethodDeclOrFieldDeclBody(a);
 		} else Error(143);
 		return z;
@@ -4229,7 +4240,20 @@ d : new PrimaryFieldAccess(a, c));
 			SemError("annotation requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		QualifiedIdentifier();
+		Term qname = QualifiedIdentifier();
+		// Slice 47: `@SafeVarargs` is a Java 7 standard annotation
+		// (java.lang.SafeVarargs). JCGO has no warning channel for
+		// the unchecked-conversion warning it suppresses, so the
+		// runtime effect is a no-op — but the version gate stays so
+		// the syntax is rejected on older source levels.
+		String dotted = qname instanceof QualifiedName
+				? ((QualifiedName) qname).dottedName() : "";
+		if (("SafeVarargs".equals(dotted)
+				|| "java.lang.SafeVarargs".equals(dotted))
+				&& Main.dict.javaVersion < JavaVersion.JLS_70) {
+			SemError("@SafeVarargs requires -source 7 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
 		// Annotation values are discarded by the AST anyway; accept any
 		// balanced-paren content so all JLS 9.7 forms parse:
 		//   @Foo, @Foo(value), @Foo(name=value), @Foo({a,b}), @Foo(name={a,b}),
