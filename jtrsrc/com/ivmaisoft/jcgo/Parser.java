@@ -36,12 +36,31 @@ public class Parser {
 	static Token t;       // lookahead token
 
 	// Slice 45: stack of currently-active generic type-parameter
-	// names. Each element is an ObjVector of String. Pushed when
-	// entering a generic class / interface / record / method /
-	// constructor body, popped on exit. SimpleType uses this to
-	// substitute single-id type-param references (e.g. `T`) with
-	// java.lang.Object — the JLS erasure for an unbounded param.
+	// names. Each element is an ObjVector of paired entries
+	// [name, bound, name, bound, ...]. Pushed when entering a generic
+	// class / interface / record / method / constructor body, popped
+	// on exit. SimpleType uses this to substitute single-id type-param
+	// references with their erasure (Object, or the bound).
 	private static final ObjVector typeParamScopes = new ObjVector();
+
+	// Slice 45b: side-channel from generic AST nodes (ClassDeclaration,
+	// IfaceDeclaration, MethodDeclaration, ConstrDeclaration) to their
+	// original `<T, U extends X>` declaration list. Same paired layout
+	// as the scope vectors above. Codegen passes (slice 50 reflection,
+	// slice 51 bridge methods) read this through getGenericSignature
+	// instead of trying to recover the info from the erased AST.
+	private static final ObjHashtable genericSignatures = new ObjHashtable();
+
+	static ObjVector getGenericSignature(Term decl) {
+		return decl == null ? null
+				: (ObjVector) genericSignatures.get(decl);
+	}
+
+	private static void recordGenericSignature(Term decl, ObjVector entries) {
+		if (decl != null && entries != null && entries.size() > 0) {
+			genericSignatures.put(decl, entries);
+		}
+	}
 
 
 
@@ -3562,11 +3581,16 @@ d : new PrimaryFieldAccess(a, c));
 		// Slice 24b: `<T> ReturnType foo(T x) ...` — generic-method
 		// type-parameter prefix. Slice 45: capture the names so they
 		// erase to Object inside the return type, parameter types,
-		// throws clause, and body.
+		// throws clause, and body. Slice 45b: keep the list so codegen
+		// can recover the original signature on the resulting method
+		// (or constructor) AST node.
 		if (t.kind == 73) {
-			pushTypeParamScope(consumeTypeParamList());
+			ObjVector captured = consumeTypeParamList();
+			pushTypeParamScope(captured);
 			try {
-				return MemberDecl();
+				Term result = MemberDecl();
+				recordGenericSignature(result, captured);
+				return result;
 			} finally {
 				popTypeParamScope();
 			}
@@ -3713,10 +3737,13 @@ d : new PrimaryFieldAccess(a, c));
 		b = Identifier();
 		// Slice 24: `interface Foo<T, U> ...` — consume the
 		// type-parameter list. Slice 45: capture the names so they
-		// erase to Object inside the body.
+		// erase to Object inside the body. Slice 45b: keep the list
+		// so codegen can recover the original signature.
 		boolean pushed = false;
+		ObjVector captured = null;
 		if (t.kind == 73) {
-			pushTypeParamScope(consumeTypeParamList());
+			captured = consumeTypeParamList();
+			pushTypeParamScope(captured);
 			pushed = true;
 		}
 		try {
@@ -3731,6 +3758,7 @@ d : new PrimaryFieldAccess(a, c));
 			if (pushed) popTypeParamScope();
 		}
 		z = new IfaceDeclaration(b, c, d);
+		recordGenericSignature(z, captured);
 		return z;
 	}
 
@@ -3740,10 +3768,13 @@ d : new PrimaryFieldAccess(a, c));
 		b = Identifier();
 		// Slice 24: `class Foo<T, U extends Number> ...` — consume the
 		// type-parameter list. Slice 45: capture the names so they
-		// erase to Object inside the body.
+		// erase to Object inside the body. Slice 45b: keep the same
+		// list so codegen can later recover the original signature.
 		boolean pushed = false;
+		ObjVector captured = null;
 		if (t.kind == 73) {
-			pushTypeParamScope(consumeTypeParamList());
+			captured = consumeTypeParamList();
+			pushTypeParamScope(captured);
 			pushed = true;
 		}
 		try {
@@ -3761,6 +3792,7 @@ d : new PrimaryFieldAccess(a, c));
 			if (pushed) popTypeParamScope();
 		}
 		z = new ClassDeclaration(b, c, d, e);
+		recordGenericSignature(z, captured);
 		return z;
 	}
 
@@ -4074,10 +4106,14 @@ d : new PrimaryFieldAccess(a, c));
 		Term name = Identifier();
 		// Slice 45: optional `<T, U>` type-parameter list on the
 		// record header. Captured so type-param refs in the component
-		// list and body erase to Object.
+		// list and body erase to Object. Slice 45b: keep the list so
+		// codegen can recover the original signature on the inner
+		// ClassDeclaration the record desugars to.
 		boolean pushed = false;
+		ObjVector capturedRecordTParams = null;
 		if (t.kind == 73) {
-			pushTypeParamScope(consumeTypeParamList());
+			capturedRecordTParams = consumeTypeParamList();
+			pushTypeParamScope(capturedRecordTParams);
 			pushed = true;
 		}
 		Expect(11);
@@ -4113,6 +4149,7 @@ d : new PrimaryFieldAccess(a, c));
 			userBody);
 		Term classDecl = new ClassDeclaration(name, Empty.newTerm(),
 			implementsList, body);
+		recordGenericSignature(classDecl, capturedRecordTParams);
 		// Records are implicitly final and (when nested) implicitly static.
 		// Wrap in TypeDeclaration so the modifiers attach.
 		Term modifiers = new Seq(new AccModifier(AccModifier.STATIC),
