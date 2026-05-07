@@ -35,7 +35,15 @@ public class Parser {
 	static Token token;   // last recognized token
 	static Token t;       // lookahead token
 
-	
+	// Slice 45: stack of currently-active generic type-parameter
+	// names. Each element is an ObjVector of String. Pushed when
+	// entering a generic class / interface / record / method /
+	// constructor body, popped on exit. SimpleType uses this to
+	// substitute single-id type-param references (e.g. `T`) with
+	// java.lang.Object — the JLS erasure for an unbounded param.
+	private static final ObjVector typeParamScopes = new ObjVector();
+
+
 
 	public static void Error(int n) {
 		if (errDist >= minErrDist) Scanner.err.ParsErr(n, t.line, t.col);
@@ -2939,7 +2947,7 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term MethodDeclOrFieldDeclBody(Term a) {
 		Term z;
 		Term a2 = Empty.term, b = Empty.term, c;
-		
+
 		if (t.kind == 13) {
 			Get();
 			a2 = QualifiedIdentifier();
@@ -2948,7 +2956,11 @@ d : new PrimaryFieldAccess(a, c));
 			b = DimSpecSeq();
 		}
 		c = Identifier();
-		z = MethodDeclOrFieldDeclTail(new ClassOrIfaceType(new QualifiedName(a, a2)), b, c);
+		// Slice 45: the type for an ID-prefixed field/method decl is
+		// constructed manually here, so SimpleType's erasure hook is
+		// bypassed. Apply it directly to the wrapped name.
+		Term typeName = eraseTypeParamRef(new QualifiedName(a, a2));
+		z = MethodDeclOrFieldDeclTail(new ClassOrIfaceType(typeName), b, c);
 		return z;
 	}
 
@@ -3072,11 +3084,101 @@ d : new PrimaryFieldAccess(a, c));
 			if (t.kind == 73) {
 				consumeGenericArgs();
 			}
+			// Slice 45: erase a single-id name that matches a
+			// declared type-parameter to java.lang.Object.
+			a = eraseTypeParamRef(a);
 			z = new ClassOrIfaceType(a);
 		} else if (StartOf(2)) {
 			z = PrimitiveType();
 		} else Error(145);
 		return z;
+	}
+
+	// Slice 45: if `name` is a single-id QualifiedName matching a
+	// declared type-parameter in any active scope, return a fresh
+	// `java.lang.Object` QualifiedName tree instead. Otherwise return
+	// the input untouched.
+	private static Term eraseTypeParamRef(Term name) {
+		if (!(name instanceof QualifiedName)) return name;
+		String dotted = ((QualifiedName) name).dottedName();
+		if (dotted == null || dotted.indexOf('.') >= 0) return name;
+		if (!isActiveTypeParam(dotted)) return name;
+		return objectTypeName();
+	}
+
+	private static Term objectTypeName() {
+		return new QualifiedName(
+				new LexTerm(LexTerm.ID, "java"),
+				new QualifiedName(
+						new LexTerm(LexTerm.ID, "lang"),
+						new QualifiedName(
+								new LexTerm(LexTerm.ID, "Object"),
+								Empty.newTerm())));
+	}
+
+	// Slice 45: capture type-parameter NAMES from a `<T, U extends X>`
+	// declaration list (NOT a type-arg list — those go through
+	// consumeGenericArgs). Returns an ObjVector of String. Same
+	// token-walking shape as consumeGenericArgs, but at depth 1 grabs
+	// the first identifier of each comma-separated entry.
+	private static ObjVector consumeTypeParamList() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+			SemError("generic type parameters requires -source 5 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		ObjVector names = new ObjVector();
+		Expect(73);  // `<`
+		int depth = 1;
+		boolean expectName = true;  // next ID at depth 1 is a param name
+		while (depth > 0 && t.kind != 0) {
+			if (depth == 1 && expectName && t.kind == 1) {
+				names.addElement(t.val);
+				expectName = false;
+				Get();
+				continue;
+			}
+			if (t.kind == 73) {
+				Get();
+				depth++;
+			} else if (t.kind == 75) {
+				Get();
+				depth--;
+			} else if (t.kind == 70) {
+				if (depth < 2) break;
+				Get();
+				depth -= 2;
+			} else if (t.kind == 69) {
+				if (depth < 3) break;
+				Get();
+				depth -= 3;
+			} else if (t.kind == 27 && depth == 1) {
+				expectName = true;
+				Get();
+			} else {
+				Get();
+			}
+		}
+		return names;
+	}
+
+	private static void pushTypeParamScope(ObjVector names) {
+		typeParamScopes.addElement(names != null ? names : new ObjVector());
+	}
+
+	private static void popTypeParamScope() {
+		if (typeParamScopes.size() > 0) {
+			typeParamScopes.removeElementAt(typeParamScopes.size() - 1);
+		}
+	}
+
+	private static boolean isActiveTypeParam(String name) {
+		for (int i = typeParamScopes.size() - 1; i >= 0; i--) {
+			ObjVector scope = (ObjVector) typeParamScopes.elementAt(i);
+			for (int j = 0; j < scope.size(); j++) {
+				if (name.equals(scope.elementAt(j))) return true;
+			}
+		}
+		return false;
 	}
 
 	// Slice 24: balanced consumer for `<...>` type-argument blocks.
@@ -3365,11 +3467,16 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		z = Empty.term; Term a;
 		// Slice 24b: `<T> ReturnType foo(T x) ...` — generic-method
-		// type-parameter prefix. Consume + erase, then dispatch on the
-		// return type as if the prefix wasn't there.
+		// type-parameter prefix. Slice 45: capture the names so they
+		// erase to Object inside the return type, parameter types,
+		// throws clause, and body.
 		if (t.kind == 73) {
-			consumeGenericArgs();
-			return MemberDecl();
+			pushTypeParamScope(consumeTypeParamList());
+			try {
+				return MemberDecl();
+			} finally {
+				popTypeParamScope();
+			}
 		}
 		switch (t.kind) {
 		case 28: {
@@ -3511,18 +3618,25 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b, c = Empty.term, d;
 		b = Identifier();
-		// Slice 24: `interface Foo<T, U> ...` — consume + erase the
-		// type-parameter list.
+		// Slice 24: `interface Foo<T, U> ...` — consume the
+		// type-parameter list. Slice 45: capture the names so they
+		// erase to Object inside the body.
+		boolean pushed = false;
 		if (t.kind == 73) {
-			consumeGenericArgs();
+			pushTypeParamScope(consumeTypeParamList());
+			pushed = true;
 		}
-		if (t.kind == 25) {
-			c = ExtendsInterfaceTypes();
+		try {
+			if (t.kind == 25) {
+				c = ExtendsInterfaceTypes();
+			}
+			if (looksLikePermits()) {
+				consumePermitsClause();
+			}
+			d = ClassBody();
+		} finally {
+			if (pushed) popTypeParamScope();
 		}
-		if (looksLikePermits()) {
-			consumePermitsClause();
-		}
-		d = ClassBody();
 		z = new IfaceDeclaration(b, c, d);
 		return z;
 	}
@@ -3531,21 +3645,28 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b, c = Empty.term, d = Empty.term, e;
 		b = Identifier();
-		// Slice 24: `class Foo<T, U extends Number> ...` — consume +
-		// erase the type-parameter list.
+		// Slice 24: `class Foo<T, U extends Number> ...` — consume the
+		// type-parameter list. Slice 45: capture the names so they
+		// erase to Object inside the body.
+		boolean pushed = false;
 		if (t.kind == 73) {
-			consumeGenericArgs();
+			pushTypeParamScope(consumeTypeParamList());
+			pushed = true;
 		}
-		if (t.kind == 25) {
-			c = ExtendsType();
+		try {
+			if (t.kind == 25) {
+				c = ExtendsType();
+			}
+			if (t.kind == 26) {
+				d = ImplementsTypes();
+			}
+			if (looksLikePermits()) {
+				consumePermitsClause();
+			}
+			e = ClassBody();
+		} finally {
+			if (pushed) popTypeParamScope();
 		}
-		if (t.kind == 26) {
-			d = ImplementsTypes();
-		}
-		if (looksLikePermits()) {
-			consumePermitsClause();
-		}
-		e = ClassBody();
 		z = new ClassDeclaration(b, c, d, e);
 		return z;
 	}
@@ -3858,6 +3979,14 @@ d : new PrimaryFieldAccess(a, c));
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
 		Term name = Identifier();
+		// Slice 45: optional `<T, U>` type-parameter list on the
+		// record header. Captured so type-param refs in the component
+		// list and body erase to Object.
+		boolean pushed = false;
+		if (t.kind == 73) {
+			pushTypeParamScope(consumeTypeParamList());
+			pushed = true;
+		}
 		Expect(11);
 		Term params = Empty.newTerm();
 		if (StartOf(21)) {
@@ -3886,6 +4015,7 @@ d : new PrimaryFieldAccess(a, c));
 		currentRecordName = savedRecordName;
 		currentRecordParams = savedRecordParams;
 		Expect(29);
+		if (pushed) popTypeParamScope();
 		Term body = RecordSynthesis.buildBody(name.dottedName(), params,
 			userBody);
 		Term classDecl = new ClassDeclaration(name, Empty.newTerm(),
