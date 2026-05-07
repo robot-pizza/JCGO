@@ -160,6 +160,45 @@ public final class VMReflectAnnotations
   s = s.trim();
   if (s.length() == 0)
    return null;
+  // Nested annotation `@TypeName(args)` — recursively build a
+  // proxy for it. The captured arg-text preserves the leading `@`
+  // and parens; we strip them and recurse via parseArgText for the
+  // nested annotation's member values.
+  if (s.charAt(0) == '@')
+  {
+   String body = s.substring(1).trim();
+   int parenStart = body.indexOf('(');
+   String typeName;
+   String nestedArgs;
+   if (parenStart >= 0 && body.charAt(body.length() - 1) == ')')
+   {
+    typeName = body.substring(0, parenStart).trim();
+    nestedArgs = body.substring(parenStart + 1,
+             body.length() - 1).trim();
+   }
+   else
+   {
+    typeName = body.trim();
+    nestedArgs = "";
+   }
+   Class nestedClass = resolveAnnotationClass(typeName, declaring,
+            loader);
+   if (nestedClass == null || !nestedClass.isAnnotation())
+    return null;
+   Map nestedValues = parseArgText(nestedArgs, nestedClass, loader,
+            declaring);
+   try
+   {
+    return Proxy.newProxyInstance(loader,
+             new Class[]{nestedClass},
+             new AnnotationInvocationHandler(nestedClass,
+              nestedValues));
+   }
+   catch (RuntimeException e)
+   {
+    return null;
+   }
+  }
   // Brace-array literal `{a, b, c}` — produces an array of
   // targetType's component type, recursing into parseValueWithType
   // for each element.
