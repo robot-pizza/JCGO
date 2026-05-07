@@ -735,7 +735,7 @@ final class ClassDefinition extends ExpressionType {
             String bound = (String) genericSignatureData.elementAt(i + 1);
             sb.append(paramName).append(':');
             sb.append('L');
-            sb.append((bound != null ? bound : Names.JAVA_LANG_OBJECT)
+            sb.append(MethodDefinition.resolveBoundDottedName(bound)
                     .replace('.', '/'));
             sb.append(';');
         }

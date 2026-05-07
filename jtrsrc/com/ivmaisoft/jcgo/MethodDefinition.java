@@ -158,6 +158,13 @@ final class MethodDefinition {
     // method is unannotated. Set by MethodDeclaration.processPass0.
     private ObjVector annotationTypeNames;
 
+    // Slice 50 (pre-erasure retention): the original type-parameter
+    // name when the return type was a single-id type-var that slice
+    // 45 erased (e.g. `<T> T foo()` keeps "T" here even though
+    // resType is now Object). Null when the return type wasn't an
+    // erased type-var. Set by MethodDeclaration.processPass1.
+    private String returnTypeVarName;
+
     MethodDefinition(ClassDefinition ourClass) {
         this.ourClass = ourClass;
         id = "<clinit>";
@@ -688,19 +695,27 @@ final class MethodDefinition {
         return annotationTypeNames;
     }
 
+    // Slice 50 (pre-erasure retention): record that the return type
+    // was an erased single-id type-var (e.g. `T`) so the JLS
+    // signature can render it as `TT;` instead of the erased
+    // `Ljava/lang/Object;`.
+    void setReturnTypeVarName(String name) {
+        this.returnTypeVarName = name;
+    }
+
     // Slice 50: build a JLS method-signature string per JVMS 4.7.9.1
     // — `<TypeParams>(ArgTypes)ReturnType^Throws`. Returns null when
-    // the method has no type parameters and no parameter / return
-    // type would benefit from a Signature attribute (i.e. nothing
-    // for the runtime parser to recover that getReturnType doesn't
-    // already give).
+    // the method has no type parameters.
     //
-    // Argument and return types are taken AFTER slice-45 erasure —
-    // a `<T> T foo(T x)` ends up serialized as
-    // `<T:Ljava/lang/Object;>(Ljava/lang/Object;)Ljava/lang/Object;`,
-    // which is enough for Method.getTypeParameters() but not enough
-    // for getGenericReturnType to recover the original `T`. Full
-    // pre-erasure retention is a separate effort.
+    // Pre-erasure retention (slice 50 follow-up): when a parameter
+    // or return type was an erased single-id type-var (e.g. `T`),
+    // emit `TT;` in place of the erased reference. The parser stows
+    // each substitution's original name in a side channel keyed by
+    // the substituted Term; this method walks the paramList AST in
+    // order to recover those names, falling back to the
+    // ExpressionType erased signature when the type isn't a
+    // type-var. Inner generic args (e.g. `List<T>`) are not yet
+    // retained — they come out as the raw `Ljava/util/List;`.
     String genericSignatureString() {
         if (genericSignatureData == null
                 || genericSignatureData.size() == 0) {
@@ -713,14 +728,19 @@ final class MethodDefinition {
             String bound = (String) genericSignatureData.elementAt(i + 1);
             sb.append(paramName).append(':');
             sb.append('L');
-            sb.append((bound != null ? bound : Names.JAVA_LANG_OBJECT)
-                    .replace('.', '/'));
+            sb.append(resolveBoundDottedName(bound).replace('.', '/'));
             sb.append(';');
         }
         sb.append('>');
-        sb.append(methodSignature().getJavaSignature());
-        sb.append(isConstructor() ? Type.sig[Type.VOID]
-                : resType.getJavaSignature());
+        sb.append('(');
+        appendParamSignaturesFromAst(sb, paramList);
+        sb.append(')');
+        if (returnTypeVarName != null) {
+            sb.append('T').append(returnTypeVarName).append(';');
+        } else {
+            sb.append(isConstructor() ? Type.sig[Type.VOID]
+                    : resType.getJavaSignature());
+        }
         if (thrownClasses != null) {
             for (int i = 0; i < thrownClasses.size(); i++) {
                 ClassDefinition cd = (ClassDefinition) thrownClasses
@@ -731,6 +751,51 @@ final class MethodDefinition {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Slice 50: bounds captured by slice 46 are dotted names as
+     * written in source (e.g. "Number" rather than the
+     * fully-qualified "java.lang.Number") because the parser doesn't
+     * apply import resolution. The JLS signature format requires the
+     * fully-qualified internal name, so this helper looks the bound
+     * up in Main.dict — using java.lang.* as a fallback for
+     * unqualified single-id names that resolve there.
+     */
+    static String resolveBoundDottedName(String bound) {
+        if (bound == null) return Names.JAVA_LANG_OBJECT;
+        if (bound.indexOf('.') >= 0) return bound;
+        if (Main.dict.alreadyKnown(bound)) return bound;
+        String javaLang = "java.lang." + bound;
+        if (Main.dict.alreadyKnown(javaLang)) return javaLang;
+        return bound;
+    }
+
+    private static void appendParamSignaturesFromAst(StringBuffer sb,
+            Term params) {
+        if (params == null || !params.notEmpty()) return;
+        if (params instanceof FormalParamList) {
+            FormalParamList list = (FormalParamList) params;
+            appendParamSignaturesFromAst(sb, list.terms[0]);
+            appendParamSignaturesFromAst(sb, list.terms[1]);
+            return;
+        }
+        if (params instanceof FormalParameter) {
+            FormalParameter fp = (FormalParameter) params;
+            Term type = fp.terms[1];
+            if (type instanceof ClassOrIfaceType) {
+                Term name = ((ClassOrIfaceType) type).getNameTerm();
+                String tvar = Parser.getErasedTypeVarName(name);
+                if (tvar != null) {
+                    sb.append('T').append(tvar).append(';');
+                    return;
+                }
+            }
+            ExpressionType et = fp.exprType();
+            if (et != null) {
+                sb.append(et.getJavaSignature());
+            }
+        }
     }
 
     MethodSignature methodSignature() {

@@ -3195,15 +3195,33 @@ d : new PrimaryFieldAccess(a, c));
 	// Slice 45: if `name` is a single-id QualifiedName matching a
 	// declared type-parameter in any active scope, substitute its
 	// erasure. Slice 46: `<T extends Number>` -> Number; unbounded ->
-	// java.lang.Object.
+	// java.lang.Object. Slice 50 (pre-erasure retention): record the
+	// original type-parameter name in a side channel keyed by the
+	// substituted Term so codegen can rebuild a JLS signature with
+	// `TT;` references instead of the erased `Ljava/lang/Object;`.
 	private static Term eraseTypeParamRef(Term name) {
 		if (!(name instanceof QualifiedName)) return name;
 		String dotted = ((QualifiedName) name).dottedName();
 		if (dotted == null || dotted.indexOf('.') >= 0) return name;
 		if (!isActiveTypeParam(dotted)) return name;
 		String bound = activeBoundFor(dotted);
-		if (bound == null) return objectTypeName();
-		return qualifiedNameFromDotted(bound);
+		Term replacement = bound == null ? objectTypeName()
+				: qualifiedNameFromDotted(bound);
+		erasedTypeOriginalNames.put(replacement, dotted);
+		return replacement;
+	}
+
+	// Slice 50 (pre-erasure retention): side channel from the Term
+	// produced by eraseTypeParamRef back to the original
+	// type-parameter name (e.g. "T"). Read by MethodDefinition's
+	// signature builder to emit `TT;` in place of the erased
+	// reference.
+	private static final ObjHashtable erasedTypeOriginalNames =
+			new ObjHashtable();
+
+	static String getErasedTypeVarName(Term name) {
+		return name == null ? null
+				: (String) erasedTypeOriginalNames.get(name);
 	}
 
 	private static Term objectTypeName() {

@@ -141,6 +141,18 @@ final class MethodDeclaration extends LexNode {
         if (annos != null) {
             md.setAnnotationTypeNames(annos);
         }
+        // Slice 50 (pre-erasure retention): if the return type was a
+        // single-id type-param erased by slice 45, thread the
+        // original name through so the JLS signature can render it
+        // as `TT;`. terms[0] is the return-type AST.
+        Term returnTypeAst = terms[0];
+        if (returnTypeAst instanceof ClassOrIfaceType) {
+            Term n = ((ClassOrIfaceType) returnTypeAst).getNameTerm();
+            String tvar = Parser.getErasedTypeVarName(n);
+            if (tvar != null) {
+                md.setReturnTypeVarName(tvar);
+            }
+        }
         if (md2 != null && !md2.isAbstract()) {
             fatalError(c, "Duplicate method definition: " + id);
         }
