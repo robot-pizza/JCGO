@@ -4360,19 +4360,59 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static void comivmaisoftjcgo() {
-		Term a = Empty.term, b = Empty.term, c;
+		Term a = Empty.term, b = Empty.term, c = Empty.newTerm();
 		if (t.kind == 8) {
 			a = PackageSpecifier();
 		}
 		if (t.kind == 14) {
 			b = ImportDeclarationSeq();
 		}
-		c = TypeDeclarationSeq();
+		// Slice 48 (Java 9): module-info.java — `module com.foo { ... }`
+		// or `open module com.foo { ... }`. Annotations may precede
+		// the keyword. Parse + discard so projects that ship a
+		// module-info alongside their sources don't choke JCGO.
+		while (t.kind == 10) AnnotationGroup();
+		if (looksLikeModuleDecl()) {
+			consumeModuleDeclaration();
+		} else {
+			c = TypeDeclarationSeq();
+		}
 		if (t.kind == 6) {
 			Get();
 		}
 		Expect(0);
 		new CompilationUnit(a, b, c);
+	}
+
+	// Slice 48: `module` is a restricted keyword (still ID-token in the
+	// lexer), recognized only at compilation-unit position. `open`
+	// optionally precedes it.
+	private static boolean looksLikeModuleDecl() {
+		if (t.kind == 1 && "module".equals(t.val)) return true;
+		return t.kind == 1 && "open".equals(t.val)
+			&& peek(2).kind == 1 && "module".equals(peek(2).val);
+	}
+
+	private static void consumeModuleDeclaration() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_90) {
+			SemError("module declaration requires -source 9 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		if (t.kind == 1 && "open".equals(t.val)) Get();
+		Get();  // `module`
+		QualifiedIdentifier();
+		Expect(28);
+		int depth = 1;
+		while (depth > 0 && t.kind != 0) {
+			if (t.kind == 28) {
+				depth++;
+			} else if (t.kind == 29) {
+				depth--;
+				if (depth == 0) break;
+			}
+			Get();
+		}
+		Expect(29);
 	}
 
 
