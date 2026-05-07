@@ -1446,15 +1446,29 @@ final class ClassDefinition extends ExpressionType {
     private void validateSealedExtension(ClassDefinition parent) {
         if (parent == null || !parent.isSealed()) return;
         ObjVector permits = parent.getPermitsList();
-        if (permits == null) return;
         boolean inPermits = false;
-        for (int i = 0; i < permits.size(); i++) {
-            String allowed = (String) permits.elementAt(i);
-            if (this.name.equals(allowed)
-                    || this.name.endsWith("." + allowed)
-                    || this.name.endsWith("$" + allowed)) {
+        if (permits != null) {
+            for (int i = 0; i < permits.size(); i++) {
+                String allowed = (String) permits.elementAt(i);
+                if (this.name.equals(allowed)
+                        || this.name.endsWith("." + allowed)
+                        || this.name.endsWith("$" + allowed)) {
+                    inPermits = true;
+                    break;
+                }
+            }
+        } else {
+            // Slice 52 follow-up (implicit permits): JLS 8.1.1.2
+            // allows the `permits` clause to be omitted when every
+            // direct subclass lives in the same compilation unit as
+            // the sealed parent. Probe the source-file map — if both
+            // classes resolve to the same file, treat as permitted.
+            String myFile = Main.dict.javaFiles
+                    .classFilename(this.name, true);
+            String parentFile = Main.dict.javaFiles
+                    .classFilename(parent.name, true);
+            if (myFile != null && myFile.equals(parentFile)) {
                 inPermits = true;
-                break;
             }
         }
         if (!inPermits) {

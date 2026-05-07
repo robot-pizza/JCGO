@@ -4454,7 +4454,14 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		// Slice 49: capture the annotation type name for the
 		// surrounding declaration (skipped for type-use positions).
-		if (!inTypeUseAnnotationContext && dotted.length() > 0) {
+		// Slice 49 follow-up (retention): well-known SOURCE-retention
+		// annotations are not retained — they exist only for the
+		// compiler's benefit and shouldn't surface in runtime
+		// reflection data. Other RetentionPolicy values aren't
+		// distinguishable at parse time without loading the
+		// annotation class.
+		if (!inTypeUseAnnotationContext && dotted.length() > 0
+				&& !isSourceRetentionAnnotation(dotted)) {
 			pendingAnnotationNames.addElement(dotted);
 		}
 		// Annotation values are discarded by the AST anyway; accept any
@@ -4475,6 +4482,17 @@ d : new PrimaryFieldAccess(a, c));
 			}
 			Expect(12);
 		}
+	}
+
+	// Slice 49: well-known SOURCE-retention annotations skipped from
+	// runtime metadata. Per JLS the @Retention(SOURCE) annotations
+	// shouldn't be reflectable; without parsing @Retention argument
+	// values we hardcode the standard ones JCGO is likely to see.
+	private static boolean isSourceRetentionAnnotation(String dotted) {
+		return "Override".equals(dotted)
+			|| "java.lang.Override".equals(dotted)
+			|| "SuppressWarnings".equals(dotted)
+			|| "java.lang.SuppressWarnings".equals(dotted);
 	}
 
 	private static void AnnotationGroup() {
