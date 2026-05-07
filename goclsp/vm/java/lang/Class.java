@@ -962,6 +962,21 @@ public final class Class /* hard-coded class name */ /* const data */
   return VMClass.getDeclaredAnnotations(this);
  }
 
+ // Java 8: getAnnotationsByType / getDeclaredAnnotationsByType.
+ // Slice 86: filter the existing direct annotations by type, then
+ // (if none found) consult the @Repeatable container annotation.
+ public Annotation[] getAnnotationsByType(Class annotationClass)
+ {
+  return java.lang.reflect.VMReflectAnnotations.byType(
+          getAnnotations(), annotationClass);
+ }
+
+ public Annotation[] getDeclaredAnnotationsByType(Class annotationClass)
+ {
+  return java.lang.reflect.VMReflectAnnotations.byType(
+          getDeclaredAnnotations(), annotationClass);
+ }
+
  public Class getEnclosingClass()
  {
   return VMClass.getEnclosingClass(this);

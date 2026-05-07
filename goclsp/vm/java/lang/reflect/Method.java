@@ -190,6 +190,18 @@ public final class Method extends AccessibleObject
           getDeclaringClass());
  }
 
+ public Annotation[] getAnnotationsByType(Class annotationClass)
+ {
+  return VMReflectAnnotations.byType(getDeclaredAnnotations(),
+          annotationClass);
+ }
+
+ public Annotation[] getDeclaredAnnotationsByType(Class annotationClass)
+ {
+  return VMReflectAnnotations.byType(getDeclaredAnnotations(),
+          annotationClass);
+ }
+
  // Slice 49 ext: JCGO-specific extension that returns the per-
  // parameter annotation type names (dotted form) emitted by JCGO
  // codegen. Outer indexed by parameter position; each cell is a

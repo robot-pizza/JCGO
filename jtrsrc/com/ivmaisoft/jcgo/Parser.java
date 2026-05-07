@@ -3461,86 +3461,156 @@ d : new PrimaryFieldAccess(a, c));
 				: (String) capturedGenericArgs.get(name);
 	}
 
-	// Capture-or-discard variant of consumeGenericArgs. Called by
-	// type-use sites that want pre-erasure retention. Consumes the
-	// `<...>` block and:
-	//   - returns the JLS-form `<arg1arg2...>` string when every arg
-	//     is either a simple type-var reference or a single-ident
-	//     class name (qualified via Main.dict at codegen time);
-	//   - returns null and silently consumes the rest of the block
-	//     when a wildcard, array, or nested generic appears.
-	// Either way the tokenizer advances past the closing angle.
+	// Capture-or-discard recursive-descent variant of
+	// consumeGenericArgs. Called by type-use sites that want
+	// pre-erasure retention. Consumes the `<...>` block and returns
+	// the JLS-form `<arg1arg2...>` string. Supports type-var
+	// references, qualified class names, nested generics
+	// (`Map<String, List<T>>`), wildcards (`<? extends X>`,
+	// `<? super Y>`, `<?>`), array type args (`List<int[]>`,
+	// `List<String[]>`), and primitive type args. Returns null when
+	// the args contain something genuinely unsupported.
+	//
+	// The `>>` and `>>>` close-angle tokens are split via a static
+	// pendingCloseAngles counter — when one is consumed at depth
+	// boundary K it leaves K-1 pending, which the next outer-level
+	// close consumes without advancing the token cursor.
+	private static int pendingCloseAngles;
+
 	private static String captureGenericArgsToJls() {
-		Expect(73);  // `<`
+		if (t.kind != 73) return null;
+		Get();  // <
 		StringBuffer sb = new StringBuffer();
 		sb.append('<');
-		boolean ok = true;
-		int depth = 1;
-		boolean atArgStart = true;
-		while (depth > 0 && t.kind != 0) {
-			if (t.kind == 75) {
+		while (!atClosingAngle()) {
+			if (t.kind == 27) {
 				Get();
-				depth--;
-				if (depth == 0) {
-					sb.append('>');
-					return ok ? sb.toString() : null;
-				}
-				sb.append('>');
-				atArgStart = true;
-			} else if (t.kind == 70) {
-				// `>>` closes two layers in one token.
-				if (depth < 2) break;
-				Get();
-				depth -= 2;
-				sb.append(">>");
-				if (depth == 0) return ok ? sb.toString() : null;
-				atArgStart = true;
-			} else if (t.kind == 69) {
-				if (depth < 3) break;
-				Get();
-				depth -= 3;
-				sb.append(">>>");
-				if (depth == 0) return ok ? sb.toString() : null;
-				atArgStart = true;
-			} else if (t.kind == 27) {
-				Get();
-				atArgStart = true;
-			} else if (t.kind == 73) {
-				// Nested generics — not yet supported. Consume but
-				// invalidate.
-				Get();
-				depth++;
-				ok = false;
-			} else if (atArgStart && t.kind == 1) {
-				String first = t.val;
-				if ("?".equals(first)) {
-					ok = false;
-					Get();
-					atArgStart = false;
-					continue;
-				}
-				StringBuffer nameBuf = new StringBuffer(first);
-				Get();
-				while (t.kind == 13 && peek(2).kind == 1) {
-					Get();  // .
-					nameBuf.append('.').append(t.val);
-					Get();
-				}
-				String dotted = nameBuf.toString();
-				if (dotted.indexOf('.') < 0
-						&& isActiveTypeParam(dotted)) {
-					sb.append('T').append(dotted).append(';');
-				} else {
-					sb.append('L').append(dotted.replace('.', '/'))
-							.append(';');
-				}
-				atArgStart = false;
-			} else {
-				// Anything else (e.g. `extends`, `super`, `[`) —
-				// not yet supported. Consume but invalidate.
-				ok = false;
-				Get();
+				continue;
 			}
+			String arg = captureOneTypeArg();
+			if (arg == null) return null;
+			sb.append(arg);
+		}
+		consumeOneClosingAngle();
+		sb.append('>');
+		return sb.toString();
+	}
+
+	private static boolean atClosingAngle() {
+		return pendingCloseAngles > 0
+			|| t.kind == 75 || t.kind == 70 || t.kind == 69
+			|| t.kind == 0;
+	}
+
+	private static void consumeOneClosingAngle() {
+		if (pendingCloseAngles > 0) {
+			pendingCloseAngles--;
+			return;
+		}
+		if (t.kind == 75) {
+			Get();
+		} else if (t.kind == 70) {
+			Get();
+			pendingCloseAngles = 1;
+		} else if (t.kind == 69) {
+			Get();
+			pendingCloseAngles = 2;
+		}
+	}
+
+	private static String captureOneTypeArg() {
+		// Slice 44 type-use annotations may decorate the type arg
+		// itself (`<@NonNull T>`); skip them.
+		if (t.kind == 10) {
+			TypeUseAnnotationGroup();
+		}
+		// Wildcards: ?, ? extends X, ? super Y.
+		if (t.kind == 58) {
+			Get();
+			if (t.kind == 10) {
+				TypeUseAnnotationGroup();
+			}
+			if (t.kind == 25) {  // extends
+				Get();
+				String type = captureFieldTypeSig();
+				if (type == null) return null;
+				return "+" + type;
+			}
+			if (t.kind == 101) {  // super
+				Get();
+				String type = captureFieldTypeSig();
+				if (type == null) return null;
+				return "-" + type;
+			}
+			return "*";
+		}
+		return captureFieldTypeSig();
+	}
+
+	private static String captureFieldTypeSig() {
+		// Primitive: kinds 35..42 (boolean/byte/char/short/int/
+		// long/float/double).
+		String prim = primitiveJlsCode(t.kind);
+		if (prim != null) {
+			Get();
+			int dims = consumeDimSuffix();
+			StringBuffer arr = new StringBuffer();
+			for (int i = 0; i < dims; i++) arr.append('[');
+			arr.append(prim);
+			return arr.toString();
+		}
+		// Reference type: ID, possibly qualified.
+		if (t.kind != 1 && t.kind != 7) return null;
+		StringBuffer name = new StringBuffer(t.val);
+		Get();
+		while (t.kind == 13 && peek(2).kind == 1) {
+			Get();
+			name.append('.').append(t.val);
+			Get();
+		}
+		String dotted = name.toString();
+		StringBuffer sb = new StringBuffer();
+		if (dotted.indexOf('.') < 0 && isActiveTypeParam(dotted)) {
+			sb.append('T').append(dotted).append(';');
+		} else {
+			sb.append('L').append(dotted.replace('.', '/'));
+			if (t.kind == 73) {
+				String inner = captureGenericArgsToJls();
+				if (inner == null) return null;
+				sb.append(inner);
+			}
+			sb.append(';');
+		}
+		int dims = consumeDimSuffix();
+		if (dims > 0) {
+			StringBuffer arr = new StringBuffer();
+			for (int i = 0; i < dims; i++) arr.append('[');
+			arr.append(sb);
+			return arr.toString();
+		}
+		return sb.toString();
+	}
+
+	private static int consumeDimSuffix() {
+		int dims = 0;
+		while (t.kind == 43 && peek(2).kind == 44) {
+			Get();
+			Get();
+			dims++;
+		}
+		return dims;
+	}
+
+	private static String primitiveJlsCode(int kind) {
+		switch (kind) {
+			case 35: return "Z";  // boolean
+			case 36: return "B";  // byte
+			case 37: return "C";  // char
+			case 38: return "S";  // short
+			case 39: return "I";  // int
+			case 40: return "J";  // long
+			case 41: return "F";  // float
+			case 42: return "D";  // double
 		}
 		return null;
 	}

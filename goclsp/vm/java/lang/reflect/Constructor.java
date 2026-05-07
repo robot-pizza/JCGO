@@ -150,6 +150,18 @@ public final class Constructor extends AccessibleObject
           getDeclaringClass());
  }
 
+ public Annotation[] getAnnotationsByType(Class annotationClass)
+ {
+  return VMReflectAnnotations.byType(getDeclaredAnnotations(),
+          annotationClass);
+ }
+
+ public Annotation[] getDeclaredAnnotationsByType(Class annotationClass)
+ {
+  return VMReflectAnnotations.byType(getDeclaredAnnotations(),
+          annotationClass);
+ }
+
  // Slice 49: name-only fast path. Constructors are stored in JCGO's
  // method dictionary alongside regular methods, so they share the
  // methodsAnnos table — slot indexing works the same as Method.

@@ -43,6 +43,86 @@ public final class VMReflectAnnotations
   return build(names, null, declaring);
  }
 
+ // Java 8 getAnnotationsByType / getDeclaredAnnotationsByType
+ // helper. Filters the given direct annotations by type. If none
+ // match directly, looks at each annotation for an @Repeatable
+ // container whose value() returns an array of the requested type;
+ // when found, unwraps via reflection. Returns a zero-length array
+ // when nothing matches.
+ public static Annotation[] byType(Annotation[] direct,
+   Class annotationClass)
+ {
+  if (direct == null || direct.length == 0)
+   return (Annotation[]) java.lang.reflect.Array.newInstance(
+            annotationClass, 0);
+  // Direct hits first.
+  Annotation[] tmp = (Annotation[]) java.lang.reflect.Array
+          .newInstance(annotationClass, direct.length);
+  int count = 0;
+  for (int i = 0; i < direct.length; i++)
+  {
+   if (annotationClass.isInstance(direct[i]))
+    tmp[count++] = direct[i];
+  }
+  if (count > 0)
+   return shrink(tmp, count, annotationClass);
+  // No direct hits — look for an @Repeatable container.
+  Class containerClass = findRepeatableContainer(annotationClass);
+  if (containerClass == null)
+   return (Annotation[]) java.lang.reflect.Array.newInstance(
+            annotationClass, 0);
+  for (int i = 0; i < direct.length; i++)
+  {
+   if (containerClass.isInstance(direct[i]))
+   {
+    Object unwrapped = invokeValueMember(direct[i]);
+    if (unwrapped instanceof Annotation[])
+     return (Annotation[]) unwrapped;
+   }
+  }
+  return (Annotation[]) java.lang.reflect.Array.newInstance(
+          annotationClass, 0);
+ }
+
+ private static Annotation[] shrink(Annotation[] arr, int count,
+   Class annotationClass)
+ {
+  if (count == arr.length)
+   return arr;
+  Annotation[] r = (Annotation[]) java.lang.reflect.Array
+          .newInstance(annotationClass, count);
+  System.arraycopy(arr, 0, r, 0, count);
+  return r;
+ }
+
+ private static Class findRepeatableContainer(Class annotationClass)
+ {
+  try
+  {
+   java.lang.annotation.Repeatable r = (java.lang.annotation.Repeatable)
+            annotationClass.getAnnotation(
+              java.lang.annotation.Repeatable.class);
+   return r != null ? r.value() : null;
+  }
+  catch (Throwable t)
+  {
+   return null;
+  }
+ }
+
+ private static Object invokeValueMember(Annotation anno)
+ {
+  try
+  {
+   Method m = anno.annotationType().getMethod("value", new Class[0]);
+   return m.invoke(anno, new Object[0]);
+  }
+  catch (Throwable t)
+  {
+   return null;
+  }
+ }
+
  public static Annotation[] build(String[] names, String[] argTexts,
    Class declaring)
  {
@@ -255,7 +335,28 @@ public final class VMReflectAnnotations
    }
   }
   // String / boolean / class / number literals — type-agnostic.
-  return parseValue(s, declaring, loader);
+  Object val = parseValue(s, declaring, loader);
+  // Type-directed numeric coercion: an integer literal `5` for a
+  // byte / short / char member needs to be re-boxed to the right
+  // primitive wrapper class so AnnotationInvocationHandler's
+  // isInstance check passes.
+  if (val instanceof Integer && targetType != null)
+  {
+   int v = ((Integer) val).intValue();
+   if (targetType == Byte.TYPE || targetType == Byte.class)
+    return Byte.valueOf((byte) v);
+   if (targetType == Short.TYPE || targetType == Short.class)
+    return Short.valueOf((short) v);
+   if (targetType == Character.TYPE || targetType == Character.class)
+    return Character.valueOf((char) v);
+   if (targetType == Long.TYPE || targetType == Long.class)
+    return Long.valueOf(v);
+   if (targetType == Float.TYPE || targetType == Float.class)
+    return Float.valueOf(v);
+   if (targetType == Double.TYPE || targetType == Double.class)
+    return Double.valueOf(v);
+  }
+  return val;
  }
 
  private static String[] splitTopLevelCommas(String s)
@@ -359,6 +460,15 @@ public final class VMReflectAnnotations
   {
    return unescapeStringLiteral(s.substring(1, s.length() - 1));
   }
+  if (s.length() >= 3 && s.charAt(0) == '\''
+      && s.charAt(s.length() - 1) == '\'')
+  {
+   String inside = unescapeStringLiteral(
+            s.substring(1, s.length() - 1));
+   if (inside.length() == 1)
+    return Character.valueOf(inside.charAt(0));
+   return null;
+  }
   if ("true".equals(s))
    return Boolean.TRUE;
   if ("false".equals(s))
@@ -371,7 +481,6 @@ public final class VMReflectAnnotations
     c = tryLoad(cname, loader);
    return c;
   }
-  // Numeric — int / long.
   Object n = parseNumber(s);
   if (n != null)
    return n;
@@ -385,7 +494,26 @@ public final class VMReflectAnnotations
    return null;
   char last = s.charAt(len - 1);
   boolean isLong = last == 'L' || last == 'l';
-  String body = isLong ? s.substring(0, len - 1) : s;
+  boolean isFloat = last == 'F' || last == 'f';
+  boolean isDouble = last == 'D' || last == 'd';
+  String body = (isLong || isFloat || isDouble)
+          ? s.substring(0, len - 1) : s;
+  // Float / double — look for explicit suffix or fractional point /
+  // exponent.
+  if (isFloat || isDouble || body.indexOf('.') >= 0
+      || body.indexOf('e') >= 0 || body.indexOf('E') >= 0)
+  {
+   try
+   {
+    if (isFloat)
+     return Float.valueOf(body);
+    return Double.valueOf(body);
+   }
+   catch (NumberFormatException e)
+   {
+    return null;
+   }
+  }
   try
   {
    if (isLong)

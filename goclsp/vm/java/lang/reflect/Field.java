@@ -99,6 +99,18 @@ public final class Field extends AccessibleObject
           getDeclaringClass());
  }
 
+ public Annotation[] getAnnotationsByType(Class annotationClass)
+ {
+  return VMReflectAnnotations.byType(getDeclaredAnnotations(),
+          annotationClass);
+ }
+
+ public Annotation[] getDeclaredAnnotationsByType(Class annotationClass)
+ {
+  return VMReflectAnnotations.byType(getDeclaredAnnotations(),
+          annotationClass);
+ }
+
  // Slice 49: name-only fast path that reads the per-class
  // fieldsAnnos table emitted by JCGO codegen. Falls back to the
  // standard Annotation[]-based check (which returns false because
