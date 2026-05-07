@@ -1,14 +1,29 @@
 
                   JCGO - Java source to C code translator
                   ---------------------------------------
-                         version 1.16 (2014-04-29)
+                         version 21.0 (2026-05-07)
                          -------------------------
                                User's Guide
                                ------------
 
+Official site: http://www.ivmaisoft.com/jcgo/
+Modernization fork: https://github.com/robot-pizza/JCGO
+
 Copyright (C) 2001-2014 Ivan Maidanski <ivmai@mail.ru>
 Copyright 2010 IvMaiSoft LLC. http://www.ivmaisoft.com
+Copyright (C) 2026 robot.pizza
 All rights reserved.
+
+The 21.0 release is a fork by robot.pizza that lifts the original
+JLS-1+2 source-language ceiling to JLS 21 — generics (with erasure
+and bridge methods), enums, annotations (with class-level retention
+reflection), foreach, autoboxing, lambdas and method references,
+default and private interface methods, try-with-resources, switch
+expressions and pattern matching, sealed classes (with translate-time
+permits enforcement), records, and module-info parse-and-discard.
+The original 1.16 user guide below describes the translator's
+overall shape; modernization details are in the per-slice commit
+messages.
 
 Disclaimer
 ----------
