@@ -235,6 +235,13 @@ public final class Class /* hard-coded class name */ /* const data */
  // Class(...) ctor leaves it default-null).
  transient String genericSignature; /* hard-coded type and name */
 
+ // Slice 49: dotted type names of class-level declaration
+ // annotations (e.g. ["java.lang.Deprecated"]). Null when the class
+ // has no annotations. Populated by JCGO codegen and read by
+ // VMClass.isAnnotationPresent for a name-only lookup. Full
+ // Annotation[] proxy construction is deferred.
+ transient String[] annotationTypeNames; /* hard-coded type and name */
+
  Class(Object vmdata, String name, Class superclass, Class[] interfaces,
    int modifiers)
  { /* used by VM classes only */
@@ -992,6 +999,26 @@ public final class Class /* hard-coded class name */ /* const data */
 
  public boolean isAnnotationPresent(Class annotationClass)
  {
+  // Slice 49: name-only fast path. JCGO emits annotation type names
+  // into a String[] on the Class struct; we return true if the
+  // requested annotation's class name is present. Falls back to the
+  // standard Annotation[] iteration for cases the side-channel
+  // doesn't cover (e.g. inherited annotations).
+  if (annotationClass != null && annotationTypeNames != null)
+  {
+   String wanted = annotationClass.getName();
+   for (int i = 0; i < annotationTypeNames.length; i++)
+   {
+    String have = annotationTypeNames[i];
+    if (have == null)
+     continue;
+    if (have.equals(wanted) ||
+        have.endsWith("." + wanted) ||
+        wanted.endsWith("." + have))
+     return true;
+   }
+   return false;
+  }
   return getAnnotation(annotationClass) != null;
  }
 

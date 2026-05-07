@@ -468,7 +468,10 @@ final class Names {
             // for older builds stays compatible if someone removes
             // the field. JCGO's emission code at the static class
             // initializer also hardcodes one extra slot for it.
-            "genericSignature" };
+            "genericSignature",
+            // Slice 49: class-level annotation type names. NULL when
+            // the class is unannotated.
+            "annotationTypeNames" };
 
     static final String[] fieldsOrderString = {
             "value", "offset", "count", "cachedHashCode" };

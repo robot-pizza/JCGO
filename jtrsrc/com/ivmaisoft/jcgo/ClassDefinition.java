@@ -227,6 +227,12 @@ final class ClassDefinition extends ExpressionType {
     // when the class is emitted.
     private ObjVector genericSignatureData;
 
+    // Slice 49: class-level annotation type names captured by the
+    // parser (slice 49 side channel) and threaded onto the
+    // ClassDefinition by ClassDeclaration.processPass0. Null for
+    // classes with no declaration annotations.
+    private ObjVector annotationTypeNames;
+
     private OrderedMap inclassCalls;
 
     ObjHashtable knownMethodInfos;
@@ -692,6 +698,16 @@ final class ClassDefinition extends ExpressionType {
     // Called from ClassDeclaration.processPass0.
     void setGenericSignatureData(ObjVector data) {
         this.genericSignatureData = data;
+    }
+
+    // Slice 49: store the parser-captured class-level annotation type
+    // names. Called from ClassDeclaration.processPass0.
+    void setAnnotationTypeNames(ObjVector names) {
+        this.annotationTypeNames = names;
+    }
+
+    ObjVector getAnnotationTypeNames() {
+        return annotationTypeNames;
     }
 
     // Slice 50: build a JLS class-signature string per JLS 4.3 /
@@ -4172,6 +4188,31 @@ final class ClassDefinition extends ExpressionType {
             } else {
                 outputContext.cPrint(LexTerm.NULL_STR);
             }
+            // Slice 49: emit annotationTypeNames String[] after
+            // genericSignature. NULL when the class has no
+            // declaration annotations.
+            outputContext.cPrint(",\010");
+            if (annotationTypeNames != null
+                    && annotationTypeNames.size() > 0) {
+                StringBuffer aBuf = new StringBuffer();
+                int aCnt = 0;
+                for (int i = 0; i < annotationTypeNames.size(); i++) {
+                    String typeName = (String) annotationTypeNames
+                            .elementAt(i);
+                    aBuf.append('(')
+                            .append(Type.cName[Type.CLASSINTERFACE])
+                            .append(')');
+                    aBuf.append(Main.dict.classNameStringOutput(typeName,
+                            this, true));
+                    aBuf.append(", ");
+                    aCnt++;
+                }
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING),
+                        aBuf.toString(), aCnt));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
             outputContext.cPrint("}");
             if (reflectedFieldNames != null) {
                 VariableDefinition[] fields = new VariableDefinition[reflectedFieldNames
@@ -4346,6 +4387,9 @@ final class ClassDefinition extends ExpressionType {
                     outputContext.cPrint(", ");
                     outputContext.cPrint(LexTerm.NULL_STR);
                     outputContext.cPrint(", 0");
+                    // Slice 50/49: NULLREF coreclass also gets the
+                    // genericSignature + annotationTypeNames trailing
+                    // NULL slots (added in else branch unconditionally).
                 } else {
                     outputContext.cPrint("JCGO_OBJREF_OF(*(");
                     outputContext.cPrint(cname);
@@ -4371,6 +4415,10 @@ final class ClassDefinition extends ExpressionType {
                 }
                 // Slice 50: trailing genericSignature slot — primitive
                 // / array core classes are never generic.
+                outputContext.cPrint(", ");
+                outputContext.cPrint(LexTerm.NULL_STR);
+                // Slice 49: trailing annotationTypeNames slot — core
+                // classes carry no annotations.
                 outputContext.cPrint(", ");
                 outputContext.cPrint(LexTerm.NULL_STR);
                 outputContext.cPrint("}");
@@ -4414,6 +4462,10 @@ final class ClassDefinition extends ExpressionType {
                     | AccModifier.ABSTRACT));
             // Slice 50: trailing genericSignature slot — array stub
             // classes are never generic.
+            outputContext.cPrint(", ");
+            outputContext.cPrint(LexTerm.NULL_STR);
+            // Slice 49: trailing annotationTypeNames slot — array
+            // stub classes carry no annotations.
             outputContext.cPrint(", ");
             outputContext.cPrint(LexTerm.NULL_STR);
             outputContext.cPrint("}");

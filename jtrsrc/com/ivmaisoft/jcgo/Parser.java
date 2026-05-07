@@ -78,6 +78,49 @@ public class Parser {
 		}
 	}
 
+	// Slice 49: pending list of declaration-annotation type names
+	// captured during the most recent ModifierSeq / AccModifier parse.
+	// Drained by the surrounding declaration (ClassDeclaration,
+	// MemberDecl wrapping, top-level type decl) and attached to the
+	// declaration's AST node via a side channel. Type-use annotation
+	// captures are excluded by the inTypeUseAnnotationContext flag.
+	private static ObjVector pendingAnnotationNames = new ObjVector();
+
+	private static boolean inTypeUseAnnotationContext = false;
+
+	private static final ObjHashtable annotationsByDecl = new ObjHashtable();
+
+	static ObjVector getDeclarationAnnotations(Term decl) {
+		return decl == null ? null
+				: (ObjVector) annotationsByDecl.get(decl);
+	}
+
+	private static int snapshotPendingAnnotations() {
+		return pendingAnnotationNames.size();
+	}
+
+	private static ObjVector takePendingAnnotationsSince(int snap) {
+		int cur = pendingAnnotationNames.size();
+		if (cur <= snap) return null;
+		ObjVector taken = new ObjVector();
+		for (int i = snap; i < cur; i++) {
+			taken.addElement(pendingAnnotationNames.elementAt(i));
+		}
+		// Trim pending back to snapshot to avoid stealing annotations
+		// that belong to an enclosing declaration.
+		while (pendingAnnotationNames.size() > snap) {
+			pendingAnnotationNames.removeElementAt(
+					pendingAnnotationNames.size() - 1);
+		}
+		return taken;
+	}
+
+	private static void recordAnnotations(Term decl, ObjVector names) {
+		if (decl != null && names != null && names.size() > 0) {
+			annotationsByDecl.put(decl, names);
+		}
+	}
+
 
 
 	public static void Error(int n) {
@@ -3105,13 +3148,22 @@ d : new PrimaryFieldAccess(a, c));
 
 	// Slice 44 (Java 8 / JSR 308): type-use annotations. Parse and
 	// discard `@Anno`/`@Anno(args)` at the head of a type. Gated at
-	// JLS_80 so older source levels still reject them.
+	// JLS_80 so older source levels still reject them. Slice 49: while
+	// inside this group, Annotation() doesn't capture into the
+	// declaration-annotation buffer — type-use annotations don't count
+	// as declared on the surrounding declaration.
 	private static void TypeUseAnnotationGroup() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
 			SemError("type-use annotation requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		AnnotationGroup();
+		boolean prev = inTypeUseAnnotationContext;
+		inTypeUseAnnotationContext = true;
+		try {
+			AnnotationGroup();
+		} finally {
+			inTypeUseAnnotationContext = prev;
+		}
 	}
 
 	private static Term SimpleType() {
@@ -3671,10 +3723,16 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassBodyDecl() {
 		Term z;
 		Term a = Empty.term, b;
+		// Slice 49: snapshot the pending-annotation list before parsing
+		// this member's modifiers so the take afterwards picks up only
+		// THIS member's annotations and doesn't steal anything that
+		// belongs to the enclosing class declaration.
+		int annoSnap = snapshotPendingAnnotations();
 		if (StartOf(26) || t.kind == 60 || looksLikeSealedKw()) {
 			a = ModifierSeq();
 		}
 		b = MemberDecl();
+		recordAnnotations(b, takePendingAnnotationsSince(annoSnap));
 		z = new TypeDeclaration(a, b);
 		return z;
 	}
@@ -4241,11 +4299,16 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassInterfaceDeclaration() {
 		Term z;
 		Term a = Empty.term, b;
+		int annoSnap = snapshotPendingAnnotations();
 		if ((StartOf(29) && !(t.kind == 10 && peek(2).kind == 24))
 				|| looksLikeSealedKw()) {
 			a = ClassModifierSeq();
 		}
 		b = ClassDeclOrInterfaceDecl();
+		// Slice 49: attach declaration-annotation type names to the
+		// inner declaration (b). Snapshot semantics ensure the body's
+		// member parses don't steal these.
+		recordAnnotations(b, takePendingAnnotationsSince(annoSnap));
 		z = new TypeDeclaration(a, b);
 		return z;
 	}
@@ -4333,6 +4396,11 @@ d : new PrimaryFieldAccess(a, c));
 				&& Main.dict.javaVersion < JavaVersion.JLS_70) {
 			SemError("@SafeVarargs requires -source 7 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		// Slice 49: capture the annotation type name for the
+		// surrounding declaration (skipped for type-use positions).
+		if (!inTypeUseAnnotationContext && dotted.length() > 0) {
+			pendingAnnotationNames.addElement(dotted);
 		}
 		// Annotation values are discarded by the AST anyway; accept any
 		// balanced-paren content so all JLS 9.7 forms parse:
@@ -4448,10 +4516,14 @@ d : new PrimaryFieldAccess(a, c));
 			b = ImportDeclarationSeq();
 		}
 		// Slice 48 (Java 9): module-info.java — `module com.foo { ... }`
-		// or `open module com.foo { ... }`. Annotations may precede
-		// the keyword. Parse + discard so projects that ship a
-		// module-info alongside their sources don't choke JCGO.
-		while (t.kind == 10) AnnotationGroup();
+		// or `open module com.foo { ... }`. Parse + discard so projects
+		// that ship a module-info alongside their sources don't choke
+		// JCGO. Annotations on a top-level class are handled by
+		// ClassInterfaceDeclaration's modifier seq, so we deliberately
+		// don't pre-consume them (slice 49 needs them visible to the
+		// class for runtime retention). Annotated module declarations
+		// like `@Deprecated module foo {}` aren't supported — that's
+		// a rare edge case worth deferring.
 		if (looksLikeModuleDecl()) {
 			consumeModuleDeclaration();
 		} else {

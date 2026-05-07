@@ -86,6 +86,12 @@ class ClassDeclaration extends LexNode {
         if (genericSig != null) {
             classDefn.setGenericSignatureData(genericSig);
         }
+        // Slice 49: thread the parser-captured class-level annotation
+        // type names onto the ClassDefinition for codegen emission.
+        ObjVector annos = Parser.getDeclarationAnnotations(this);
+        if (annos != null) {
+            classDefn.setAnnotationTypeNames(annos);
+        }
     }
 
     boolean isInterface() {
