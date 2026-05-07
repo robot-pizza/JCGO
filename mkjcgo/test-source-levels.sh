@@ -139,6 +139,34 @@ run_reverse_negative() {
 rev_8="UnderscoreId"
 rev_8_UnderscoreId_banned_at=9
 
+# Slice 52: invalid-fixture runner — translate at $ver and expect a
+# specific semantic error (e.g. sealed-permits violation) regardless
+# of source level. Used for fixtures that demonstrate enforcement
+# checks rather than version gating.
+run_invalid() {
+    ver=$1; cls=$2; needle=$3
+    outdir="$OUTROOT/java$ver/${cls}_inv"
+    mkdir -p "$outdir"
+    if java -Xss1M -jar jcgo.jar -source "$ver" -d "$outdir" \
+            -src "examples/java$ver" $SRCS "$cls" >"$outdir/stdout" 2>&1; then
+        neg_fail=$((neg_fail + 1))
+        echo "  INV FAIL: java$ver $cls translated (enforcement missing)"
+    elif grep -q "$needle" "$outdir/stdout"; then
+        neg_pass=$((neg_pass + 1))
+        echo "  pass: java$ver $cls (-source $ver rejects with '$needle')"
+    else
+        neg_fail=$((neg_fail + 1))
+        echo "  INV FAIL: java$ver $cls — error wasn't '$needle'"
+        sed -n 's/^/    /p' "$outdir/stdout" | head -3
+    fi
+}
+
+# Invalid-fixture registry. inv_<ver> lists classnames; the
+# corresponding inv_<ver>_<cls>_needle is the substring expected in
+# the JCGO error output.
+inv_17="SealedBad"
+inv_17_SealedBad_needle="not permitted to extend sealed"
+
 for v in $versions; do
     dir="examples/java$v"
     [ -d "$dir" ] || continue
@@ -163,6 +191,15 @@ for v in $versions; do
             eval "banAt=\$rev_${v}_${cls}_banned_at"
             [ -n "$banAt" ] || continue
             run_reverse_negative "$v" "$cls" "$banAt"
+        done
+    fi
+    eval "inv_list=\$inv_$v"
+    if [ -n "$inv_list" ]; then
+        for cls in $inv_list; do
+            [ -f "$dir/$cls.java" ] || continue
+            eval "needle=\$inv_${v}_${cls}_needle"
+            [ -n "$needle" ] || continue
+            run_invalid "$v" "$cls" "$needle"
         done
     fi
 done

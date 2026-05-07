@@ -72,6 +72,13 @@ class ClassDeclaration extends LexNode {
         classDefn = Main.dict.get(name);
         classDefn.definePass0(c, c.modifiers, id, terms[1], terms[2], terms[3],
                 isInterface());
+        // Slice 52: thread the parser-captured `permits` list onto the
+        // ClassDefinition so the enforcement pass can look it up
+        // without re-walking the AST.
+        ObjVector permits = Parser.getPermitsList(this);
+        if (permits != null) {
+            classDefn.setPermitsList(permits);
+        }
     }
 
     boolean isInterface() {

@@ -214,6 +214,12 @@ final class ClassDefinition extends ExpressionType {
 
     private VariableDefinition lastObjectRefField;
 
+    // Slice 52: dotted class names listed in `permits A, B, C`, or
+    // null if this class isn't sealed (or has no explicit permits
+    // clause). Set by ClassDeclaration.processPass0 from the parser
+    // side-channel; read by the sealed-enforcement check.
+    private ObjVector permitsList;
+
     private OrderedMap inclassCalls;
 
     ObjHashtable knownMethodInfos;
@@ -654,6 +660,25 @@ final class ClassDefinition extends ExpressionType {
     boolean isFinal() {
         predefineClassNoMark();
         return (modifiers & AccModifier.FINAL) != 0;
+    }
+
+    // Slice 52: sealed-class predicates and permits-list accessor.
+    boolean isSealed() {
+        predefineClassNoMark();
+        return (modifiers & AccModifier.SEALED) != 0;
+    }
+
+    boolean isNonSealed() {
+        predefineClassNoMark();
+        return (modifiers & AccModifier.NON_SEALED) != 0;
+    }
+
+    ObjVector getPermitsList() {
+        return permitsList;
+    }
+
+    void setPermitsList(ObjVector list) {
+        this.permitsList = list;
     }
 
     ClassDefinition outerClass() {
@@ -1338,9 +1363,45 @@ final class ClassDefinition extends ExpressionType {
         }
     }
 
+    // Slice 52: enforce JLS 8.1.1.2 — a class/interface that extends
+    // a sealed parent must be in the parent's permits list AND must
+    // itself be marked sealed, non-sealed, or final. Skipped when the
+    // parent has no explicit permits clause (implicit-same-CU case
+    // that JCGO doesn't track) or when the child is the JLS_170 gate
+    // hasn't fired (sealed wasn't allowed in the source level).
+    private void validateSealedExtension(ClassDefinition parent) {
+        if (parent == null || !parent.isSealed()) return;
+        ObjVector permits = parent.getPermitsList();
+        if (permits == null) return;
+        boolean inPermits = false;
+        for (int i = 0; i < permits.size(); i++) {
+            String allowed = (String) permits.elementAt(i);
+            if (this.name.equals(allowed)
+                    || this.name.endsWith("." + allowed)
+                    || this.name.endsWith("$" + allowed)) {
+                inPermits = true;
+                break;
+            }
+        }
+        if (!inPermits) {
+            classbody.fatalError(context,
+                    "Class " + this.name
+                            + " is not permitted to extend sealed parent "
+                            + parent.name);
+            return;
+        }
+        if (!this.isSealed() && !this.isNonSealed() && !this.isFinal()) {
+            classbody.fatalError(context,
+                    "Class " + this.name + " extending sealed "
+                            + parent.name
+                            + " must be sealed, non-sealed, or final");
+        }
+    }
+
     private void processSuperClasses() {
         Term.assertCond(parsed);
         if (superClass != null && !addedToSuper) {
+            validateSealedExtension(superClass);
             if (implementedBy != null
                     && !superClass.name.equals(Names.JAVA_LANG_OBJECT)) {
                 addedToSuper = true;
@@ -1385,6 +1446,9 @@ final class ClassDefinition extends ExpressionType {
                             "Not an interface is specified after 'implements': "
                                     + name);
         }
+        // Slice 52: implements/extends-interface check against a
+        // sealed interface's permits list.
+        cd.validateSealedExtension(this);
         cd.specifiedInterfaces.addLast(this);
         if (cd.implementedBy != null
                 && cd.superClass.name.equals(Names.JAVA_LANG_OBJECT)) {

@@ -62,6 +62,22 @@ public class Parser {
 		}
 	}
 
+	// Slice 52: side-channel from a sealed class/interface AST node to
+	// its `permits` list (ObjVector<String> of dotted class names).
+	// Read by ClassDeclaration.processPass0 to thread the list onto
+	// ClassDefinition for runtime enforcement.
+	private static final ObjHashtable permitsLists = new ObjHashtable();
+
+	static ObjVector getPermitsList(Term decl) {
+		return decl == null ? null : (ObjVector) permitsLists.get(decl);
+	}
+
+	private static void recordPermitsList(Term decl, ObjVector names) {
+		if (decl != null && names != null && names.size() > 0) {
+			permitsLists.put(decl, names);
+		}
+	}
+
 
 
 	public static void Error(int n) {
@@ -3493,9 +3509,11 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term AccModifier() {
 		Term z;
 		z = Empty.term;
+		// Slice 52: sealed and non-sealed propagate through the
+		// modifier pipeline as real AccModifier bits.
 		if (looksLikeNonSealed()) {
 			consumeNonSealed();
-			return z;
+			return new AccModifier(AccModifier.NON_SEALED);
 		}
 		if (looksLikeSealed()) {
 			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
@@ -3503,7 +3521,7 @@ d : new PrimaryFieldAccess(a, c));
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
 			Get();
-			return z;
+			return new AccModifier(AccModifier.SEALED);
 		}
 		switch (t.kind) {
 		case 16: {
@@ -3746,12 +3764,13 @@ d : new PrimaryFieldAccess(a, c));
 			pushTypeParamScope(captured);
 			pushed = true;
 		}
+		ObjVector permits = null;
 		try {
 			if (t.kind == 25) {
 				c = ExtendsInterfaceTypes();
 			}
 			if (looksLikePermits()) {
-				consumePermitsClause();
+				permits = consumePermitsClause();
 			}
 			d = ClassBody();
 		} finally {
@@ -3759,6 +3778,7 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		z = new IfaceDeclaration(b, c, d);
 		recordGenericSignature(z, captured);
+		recordPermitsList(z, permits);
 		return z;
 	}
 
@@ -3777,6 +3797,7 @@ d : new PrimaryFieldAccess(a, c));
 			pushTypeParamScope(captured);
 			pushed = true;
 		}
+		ObjVector permits = null;
 		try {
 			if (t.kind == 25) {
 				c = ExtendsType();
@@ -3785,7 +3806,7 @@ d : new PrimaryFieldAccess(a, c));
 				d = ImplementsTypes();
 			}
 			if (looksLikePermits()) {
-				consumePermitsClause();
+				permits = consumePermitsClause();
 			}
 			e = ClassBody();
 		} finally {
@@ -3793,6 +3814,7 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		z = new ClassDeclaration(b, c, d, e);
 		recordGenericSignature(z, captured);
+		recordPermitsList(z, permits);
 		return z;
 	}
 
@@ -3827,21 +3849,42 @@ d : new PrimaryFieldAccess(a, c));
 		return t.kind == 1 && "permits".equals(t.val);
 	}
 
-	private static void consumePermitsClause() {
+	// Slice 52: capture the dotted class names listed in
+	// `permits A, B, C`. Returns an ObjVector of String. Annotations
+	// preceding each name (JSR 308 type-use) are walked but ignored.
+	private static ObjVector consumePermitsClause() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_170) {
 			SemError("sealed/permits requires -source 17 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		Get();
-		ClassTypeList();
+		Get();  // `permits`
+		ObjVector names = new ObjVector();
+		while (true) {
+			if (t.kind == 10) AnnotationGroup();
+			Term qn = QualifiedIdentifier();
+			if (qn instanceof QualifiedName) {
+				String dotted = ((QualifiedName) qn).dottedName();
+				if (dotted != null) names.addElement(dotted);
+			}
+			if (t.kind == 27) {
+				Get();
+			} else {
+				break;
+			}
+		}
+		return names;
 	}
 
 	private static Term ClassModifier() {
 		Term z;
 		z = Empty.term;
+		// Slice 52: sealed and non-sealed propagate through the
+		// modifier pipeline as real AccModifier bits, so
+		// ClassDefinition.modifiers reflects them and enforcement can
+		// run later.
 		if (looksLikeNonSealed()) {
 			consumeNonSealed();
-			return z;
+			return new AccModifier(AccModifier.NON_SEALED);
 		}
 		if (looksLikeSealed()) {
 			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
@@ -3849,7 +3892,7 @@ d : new PrimaryFieldAccess(a, c));
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
 			Get();
-			return z;
+			return new AccModifier(AccModifier.SEALED);
 		}
 		switch (t.kind) {
 		case 16: {

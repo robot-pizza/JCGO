@@ -71,6 +71,12 @@ final class AccModifier extends LexNode {
 
     static final int DEFAULT = 0x10000;
 
+    // Slice 52 (Java 17): sealed-class modifiers. SEALED on the
+    // parent restricts who can extend it; NON_SEALED on a child
+    // re-opens the hierarchy below it.
+    static final int SEALED = 0x20000;
+    static final int NON_SEALED = 0x40000;
+
     static final int LOCALVAR = 0x2000;
     static final int PARAMETER = 0x8000;
 
