@@ -229,6 +229,12 @@ public final class Class /* hard-coded class name */ /* const data */
 
  transient int modifiers; /* hard-coded type and name */
 
+ // Slice 50: JLS class-signature string per JVMS 4.7.9.1, populated
+ // by JCGO codegen for generic classes. Null for non-generic
+ // classes and for dynamically-created array classes (their
+ // Class(...) ctor leaves it default-null).
+ transient String genericSignature; /* hard-coded type and name */
+
  Class(Object vmdata, String name, Class superclass, Class[] interfaces,
    int modifiers)
  { /* used by VM classes only */

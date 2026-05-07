@@ -463,7 +463,12 @@ final class Names {
     static final String SYSTEMCLASSLOADER = "systemClassLoader".toString();
 
     static final String[] fieldsOrderClass = {
-            "vmdata", "name", "superclass", "interfaces", "modifiers" };
+            "vmdata", "name", "superclass", "interfaces", "modifiers",
+            // Slice 50: appended at the end so the C struct layout
+            // for older builds stays compatible if someone removes
+            // the field. JCGO's emission code at the static class
+            // initializer also hardcodes one extra slot for it.
+            "genericSignature" };
 
     static final String[] fieldsOrderString = {
             "value", "offset", "count", "cachedHashCode" };

@@ -220,6 +220,13 @@ final class ClassDefinition extends ExpressionType {
     // side-channel; read by the sealed-enforcement check.
     private ObjVector permitsList;
 
+    // Slice 50: parser-captured `<T, U extends X>` declaration list,
+    // same paired layout as Parser.typeParamScopes
+    // ([name, bound, name, bound, ...]). Set from
+    // ClassDeclaration.processPass0; read by genericSignatureString
+    // when the class is emitted.
+    private ObjVector genericSignatureData;
+
     private OrderedMap inclassCalls;
 
     ObjHashtable knownMethodInfos;
@@ -679,6 +686,57 @@ final class ClassDefinition extends ExpressionType {
 
     void setPermitsList(ObjVector list) {
         this.permitsList = list;
+    }
+
+    // Slice 50: store the parser-captured `<T, U extends X>` list.
+    // Called from ClassDeclaration.processPass0.
+    void setGenericSignatureData(ObjVector data) {
+        this.genericSignatureData = data;
+    }
+
+    // Slice 50: build a JLS class-signature string per JLS 4.3 /
+    // JVMS 4.7.9.1. Returns null if the class has no type parameters
+    // — non-generic classes don't get a Signature attribute and
+    // Class.getGenericSuperclass falls back to Class.getSuperclass.
+    //
+    // Format example:  <T:Ljava/lang/Number;>Ljava/lang/Object;Ljava/io/Serializable;
+    //
+    // Bounds preserve the dotted name captured by slice 46 — so
+    // `<T extends Number>` becomes `T:Ljava/lang/Number;`. Recursive
+    // bounds (like `<T extends Comparable<T>>`) lose their inner
+    // type-args here because the parser only kept the head class
+    // name; that's a known approximation but matches what slice 46
+    // erases to.
+    String genericSignatureString() {
+        if (genericSignatureData == null
+                || genericSignatureData.size() == 0) {
+            return null;
+        }
+        StringBuffer sb = new StringBuffer();
+        sb.append('<');
+        for (int i = 0; i < genericSignatureData.size(); i += 2) {
+            String paramName = (String) genericSignatureData.elementAt(i);
+            String bound = (String) genericSignatureData.elementAt(i + 1);
+            sb.append(paramName).append(':');
+            sb.append('L');
+            sb.append((bound != null ? bound : Names.JAVA_LANG_OBJECT)
+                    .replace('.', '/'));
+            sb.append(';');
+        }
+        sb.append('>');
+        sb.append('L');
+        sb.append((superClass != null ? superClass.name
+                : Names.JAVA_LANG_OBJECT).replace('.', '/'));
+        sb.append(';');
+        if (specifiedInterfaces != null) {
+            Enumeration en = specifiedInterfaces.elements();
+            while (en.hasMoreElements()) {
+                ClassDefinition iface = (ClassDefinition) en.nextElement();
+                sb.append('L').append(iface.name.replace('.', '/'))
+                        .append(';');
+            }
+        }
+        return sb.toString();
     }
 
     ClassDefinition outerClass() {
@@ -4104,6 +4162,16 @@ final class ClassDefinition extends ExpressionType {
                             | (classInitializers != null ? AccModifier.VOLATILE
                                     | AccModifier.TRANSIENT : 0)
                             | (isEnum() ? AccModifier.ENUM : 0)));
+            // Slice 50: emit the JLS class-signature string after
+            // modifiers. NULL when the class isn't generic.
+            outputContext.cPrint(",\010");
+            String genSig = genericSignatureString();
+            if (genSig != null) {
+                outputContext.cPrint(Main.dict.classNameStringOutput(
+                        genSig, this, true));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
             outputContext.cPrint("}");
             if (reflectedFieldNames != null) {
                 VariableDefinition[] fields = new VariableDefinition[reflectedFieldNames
@@ -4301,6 +4369,10 @@ final class ClassDefinition extends ExpressionType {
                     outputContext.cPrint(Integer.toHexString(AccModifier.PUBLIC
                             | AccModifier.FINAL | AccModifier.ABSTRACT));
                 }
+                // Slice 50: trailing genericSignature slot — primitive
+                // / array core classes are never generic.
+                outputContext.cPrint(", ");
+                outputContext.cPrint(LexTerm.NULL_STR);
                 outputContext.cPrint("}");
             } while (++type <= Type.VOID);
             if (isArray)
@@ -4340,6 +4412,10 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint("0x");
             outputContext.cPrint(Integer.toHexString(AccModifier.FINAL
                     | AccModifier.ABSTRACT));
+            // Slice 50: trailing genericSignature slot — array stub
+            // classes are never generic.
+            outputContext.cPrint(", ");
+            outputContext.cPrint(LexTerm.NULL_STR);
             outputContext.cPrint("}");
         }
         outputContext.cPrint("};\n\n");

@@ -79,6 +79,13 @@ class ClassDeclaration extends LexNode {
         if (permits != null) {
             classDefn.setPermitsList(permits);
         }
+        // Slice 50: thread the parser-captured `<T, U extends X>` list
+        // onto the ClassDefinition so codegen can serialize it as a
+        // JLS class signature.
+        ObjVector genericSig = Parser.getGenericSignature(this);
+        if (genericSig != null) {
+            classDefn.setGenericSignatureData(genericSig);
+        }
     }
 
     boolean isInterface() {

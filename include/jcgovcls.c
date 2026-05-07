@@ -46,8 +46,10 @@
 JCGO_NOSEP_STATIC java_lang_String CFASTCALL
 java_lang_VMClass__getClassSignature__Lc( java_lang_Class klass )
 {
- /* not implemented */
- return jnull;
+ /* Slice 50: JLS class-signature string emitted by JCGO codegen
+    into the genericSignature slot of the Class struct, or NULL for
+    non-generic and dynamically-allocated array classes. */
+ return JCGO_FIELD_NZACCESS(klass, genericSignature);
 }
 
 JCGO_NOSEP_STATIC jint CFASTCALL
