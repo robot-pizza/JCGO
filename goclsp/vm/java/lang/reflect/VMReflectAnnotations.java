@@ -56,10 +56,20 @@ public final class VMReflectAnnotations
   {
    String argText = argTexts != null && i < argTexts.length
             ? argTexts[i] : null;
-   Map values = parseArgText(argText);
-   Annotation a = buildOne(names[i], declaring, loader, values);
-   if (a != null)
-    tmp[count++] = a;
+   Class annoClass = resolveAnnotationClass(names[i], declaring, loader);
+   if (annoClass == null || !annoClass.isAnnotation())
+    continue;
+   Map values = parseArgText(argText, annoClass, loader, declaring);
+   try
+   {
+    tmp[count++] = (Annotation) Proxy.newProxyInstance(loader,
+             new Class[]{annoClass},
+             new AnnotationInvocationHandler(annoClass, values));
+   }
+   catch (RuntimeException e)
+   {
+    // skip
+   }
   }
   if (count == names.length)
    return tmp;
@@ -69,44 +79,251 @@ public final class VMReflectAnnotations
  }
 
  // Slice 86: parse the raw arg-text captured by the parser into a
- // memberValues Map. Recognized forms:
- //   <empty>           → empty map (marker annotation).
- //   "string"          → {"value": "string"}.
- //   value="string"    → {"value": "string"}.
- //   key="x"           → {"key": "x"}.
- // Anything else (numbers, classes, enums, arrays, nested
- // annotations, multi-arg) → empty map. The proxy then raises
- // IncompleteAnnotationException for those members. Capturing the
- // full set of value kinds is a deferred follow-up.
- private static Map parseArgText(String argText)
+ // memberValues Map. Recognized value kinds:
+ //   "string"             → java.lang.String
+ //   42 / 42L             → Integer / Long
+ //   true / false         → Boolean
+ //   X.class              → Class (resolved like the annotation
+ //                          class, with package fallbacks).
+ // Multi-arg `key1=v1, key2=v2` is split at top-level commas
+ // (commas inside strings / braces / parens are not splits).
+ // Single-positional `42` becomes `value=42`.
+ //
+ // Unrecognized or unsupported value kinds (enum constants,
+ // nested annotations, brace-array literals beyond a single
+ // element) are skipped, leaving the proxy to raise
+ // IncompleteAnnotationException for the affected member.
+ //
+ // Coercion: array-typed annotation members whose value parsed as
+ // a singular get wrapped to a single-element array of the right
+ // component type (e.g. `@SuppressWarnings("unused")` with `value`
+ // member returning String[] gets a String[]{"unused"}).
+ private static Map parseArgText(String argText, Class annoClass,
+   ClassLoader loader, Class declaring)
  {
   Map m = new HashMap();
   if (argText == null || argText.length() == 0)
    return m;
-  String trimmed = argText.trim();
-  // value=... form?
-  int eq = trimmed.indexOf('=');
-  String key;
-  String rest;
-  if (eq > 0)
+  String[] segments = splitTopLevelCommas(argText);
+  for (int i = 0; i < segments.length; i++)
   {
-   key = trimmed.substring(0, eq).trim();
-   rest = trimmed.substring(eq + 1).trim();
+   String trimmed = segments[i].trim();
+   if (trimmed.length() == 0)
+    continue;
+   int eq = findTopLevelEquals(trimmed);
+   String key;
+   String rest;
+   if (eq > 0)
+   {
+    key = trimmed.substring(0, eq).trim();
+    rest = trimmed.substring(eq + 1).trim();
+   }
+   else
+   {
+    key = "value";
+    rest = trimmed;
+   }
+   Object val = parseValue(rest, declaring, loader);
+   if (val != null)
+    m.put(key, val);
   }
-  else
-  {
-   key = "value";
-   rest = trimmed;
-  }
-  if (rest.length() >= 2
-      && rest.charAt(0) == '"'
-      && rest.charAt(rest.length() - 1) == '"')
-  {
-   String s = unescapeStringLiteral(
-            rest.substring(1, rest.length() - 1));
-   m.put(key, s);
-  }
+  if (annoClass != null && !m.isEmpty())
+   coerceArrayMembers(annoClass, m);
   return m;
+ }
+
+ private static String[] splitTopLevelCommas(String s)
+ {
+  int n = s.length();
+  int parts = 1;
+  for (int i = 0; i < n; i++)
+   if (s.charAt(i) == ',')
+    parts++;
+  String[] out = new String[parts];
+  int outIdx = 0;
+  int start = 0;
+  int depth = 0;
+  boolean inString = false;
+  boolean escape = false;
+  for (int i = 0; i < n; i++)
+  {
+   char c = s.charAt(i);
+   if (escape)
+   {
+    escape = false;
+    continue;
+   }
+   if (c == '\\' && inString)
+   {
+    escape = true;
+    continue;
+   }
+   if (c == '"')
+   {
+    inString = !inString;
+    continue;
+   }
+   if (inString)
+    continue;
+   if (c == '{' || c == '(' || c == '[')
+    depth++;
+   else if (c == '}' || c == ')' || c == ']')
+    depth--;
+   else if (c == ',' && depth == 0)
+   {
+    out[outIdx++] = s.substring(start, i);
+    start = i + 1;
+   }
+  }
+  out[outIdx++] = s.substring(start);
+  if (outIdx < out.length)
+  {
+   String[] r = new String[outIdx];
+   System.arraycopy(out, 0, r, 0, outIdx);
+   return r;
+  }
+  return out;
+ }
+
+ private static int findTopLevelEquals(String s)
+ {
+  int n = s.length();
+  int depth = 0;
+  boolean inString = false;
+  boolean escape = false;
+  for (int i = 0; i < n; i++)
+  {
+   char c = s.charAt(i);
+   if (escape)
+   {
+    escape = false;
+    continue;
+   }
+   if (c == '\\' && inString)
+   {
+    escape = true;
+    continue;
+   }
+   if (c == '"')
+   {
+    inString = !inString;
+    continue;
+   }
+   if (inString)
+    continue;
+   if (c == '{' || c == '(' || c == '[')
+    depth++;
+   else if (c == '}' || c == ')' || c == ']')
+    depth--;
+   else if (c == '=' && depth == 0)
+    return i;
+  }
+  return -1;
+ }
+
+ private static Object parseValue(String s, Class declaring,
+   ClassLoader loader)
+ {
+  if (s == null)
+   return null;
+  s = s.trim();
+  if (s.length() == 0)
+   return null;
+  if (s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"')
+  {
+   return unescapeStringLiteral(s.substring(1, s.length() - 1));
+  }
+  if ("true".equals(s))
+   return Boolean.TRUE;
+  if ("false".equals(s))
+   return Boolean.FALSE;
+  if (s.endsWith(".class"))
+  {
+   String cname = s.substring(0, s.length() - ".class".length()).trim();
+   Class c = resolveAnnotationClass(cname, declaring, loader);
+   if (c == null)
+    c = tryLoad(cname, loader);
+   return c;
+  }
+  // Numeric — int / long.
+  Object n = parseNumber(s);
+  if (n != null)
+   return n;
+  return null;
+ }
+
+ private static Object parseNumber(String s)
+ {
+  int len = s.length();
+  if (len == 0)
+   return null;
+  char last = s.charAt(len - 1);
+  boolean isLong = last == 'L' || last == 'l';
+  String body = isLong ? s.substring(0, len - 1) : s;
+  try
+  {
+   if (isLong)
+    return Long.valueOf(body);
+   return Integer.valueOf(body);
+  }
+  catch (NumberFormatException e)
+  {
+   return null;
+  }
+ }
+
+ private static void coerceArrayMembers(Class annoClass, Map values)
+ {
+  Method[] methods;
+  try
+  {
+   methods = annoClass.getDeclaredMethods();
+  }
+  catch (Throwable t)
+  {
+   return;
+  }
+  for (int i = 0; i < methods.length; i++)
+  {
+   Method method = methods[i];
+   String name = method.getName();
+   Object val = values.get(name);
+   if (val == null)
+    continue;
+   Class rt = method.getReturnType();
+   if (!rt.isArray() || rt.isInstance(val))
+    continue;
+   Class comp = rt.getComponentType();
+   if (!isCompatibleComponent(comp, val))
+    continue;
+   try
+   {
+    Object arr = java.lang.reflect.Array.newInstance(comp, 1);
+    java.lang.reflect.Array.set(arr, 0, val);
+    values.put(name, arr);
+   }
+   catch (Throwable t)
+   {
+    // skip
+   }
+  }
+ }
+
+ private static boolean isCompatibleComponent(Class comp, Object val)
+ {
+  if (comp.isPrimitive())
+  {
+   if (comp == Integer.TYPE) return val instanceof Integer;
+   if (comp == Long.TYPE) return val instanceof Long;
+   if (comp == Boolean.TYPE) return val instanceof Boolean;
+   if (comp == Byte.TYPE) return val instanceof Byte;
+   if (comp == Short.TYPE) return val instanceof Short;
+   if (comp == Character.TYPE) return val instanceof Character;
+   if (comp == Float.TYPE) return val instanceof Float;
+   if (comp == Double.TYPE) return val instanceof Double;
+   return false;
+  }
+  return comp.isInstance(val);
  }
 
  private static String unescapeStringLiteral(String s)
