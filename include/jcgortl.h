@@ -814,6 +814,7 @@ struct jcgo_reflect_s
  jshortArr methodsModifiers;
  jObjectArr methodsSignature; /* slice 50: parallel to methodsName */
  jObjectArr methodsAnnos;     /* slice 49: per-method String[] of declaration-annotation type names; NULL when no method in the class is annotated */
+ jObjectArr methodsParamAnnos; /* slice 49 ext: per-method String[][] of parameter-annotation type names; NULL when no method in the class has parameter annotations */
  CONST struct jcgo_methodentry_s *methodsEntry;
 };
 

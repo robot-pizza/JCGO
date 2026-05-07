@@ -121,6 +121,26 @@ public class Parser {
 		}
 	}
 
+	// Slice 49 ext (parameter annotations): side channel from a
+	// FormalParameter AST node to the annotation type names that
+	// preceded it (e.g. `void foo(@NonNull String x)` records
+	// ["NonNull"] on the FormalParameter for x). Read by
+	// MethodDeclaration.processPass1 (and ConstrDeclaration) which
+	// builds a per-param ObjVector and threads it onto MethodDefinition.
+	private static final ObjHashtable paramAnnotationsByDecl =
+			new ObjHashtable();
+
+	static ObjVector getParamAnnotations(Term param) {
+		return param == null ? null
+				: (ObjVector) paramAnnotationsByDecl.get(param);
+	}
+
+	private static void recordParamAnnotations(Term param, ObjVector names) {
+		if (param != null && names != null && names.size() > 0) {
+			paramAnnotationsByDecl.put(param, names);
+		}
+	}
+
 
 
 	public static void Error(int n) {
@@ -3428,9 +3448,15 @@ d : new PrimaryFieldAccess(a, c));
 		if (t.kind == 20) {
 			a = FinalModifier();
 		}
+		// Slice 49 ext: snapshot the pending-annotation list before
+		// parsing any parameter-level annotations so they get
+		// attributed to this FormalParameter (via recordParamAnnotations
+		// below) instead of bubbling up to the surrounding method.
+		int paramAnnoSnap = snapshotPendingAnnotations();
 		if (t.kind == 10) {
 			AnnotationGroup();
 		}
+		ObjVector paramAnnos = takePendingAnnotationsSince(paramAnnoSnap);
 		b = SimpleType();
 		if (t.kind == 43) {
 			c = DimSpecSeq();
@@ -3452,6 +3478,12 @@ d : new PrimaryFieldAccess(a, c));
 		FormalParameter fp = new FormalParameter(a, b, c,
 				new VariableIdentifier(d), e);
 		if (isVarArgs) fp.setVarArgs();
+		// Slice 49 ext: stash the parameter-level annotations on a
+		// side channel keyed by this FormalParameter, so codegen can
+		// emit them per-parameter for Method/Constructor reflection.
+		if (paramAnnos != null) {
+			recordParamAnnotations(fp, paramAnnos);
+		}
 		z = fp;
 
 		return z;

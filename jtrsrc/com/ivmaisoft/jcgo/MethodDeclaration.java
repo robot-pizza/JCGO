@@ -141,6 +141,13 @@ final class MethodDeclaration extends LexNode {
         if (annos != null) {
             md.setAnnotationTypeNames(annos);
         }
+        // Slice 49 ext: collect per-parameter annotation lists by
+        // walking the FormalParamList AST. Each entry is either an
+        // ObjVector<String> of annotation type names or null.
+        ObjVector paramAnnos = collectParamAnnotations(terms[3]);
+        if (paramAnnos != null) {
+            md.setParameterAnnotationLists(paramAnnos);
+        }
         // Slice 50 (pre-erasure retention): if the return type was a
         // single-id type-param erased by slice 45, thread the
         // original name through so the JLS signature can render it
@@ -156,6 +163,38 @@ final class MethodDeclaration extends LexNode {
         if (md2 != null && !md2.isAbstract()) {
             fatalError(c, "Duplicate method definition: " + id);
         }
+    }
+
+    /**
+     * Slice 49 ext: walk the FormalParamList AST in declaration
+     * order, returning an ObjVector indexed by parameter position
+     * where each entry is either the parameter's
+     * Parser.getParamAnnotations side-channel value or null. Returns
+     * null when no parameter on this method has annotations, so the
+     * caller can skip the per-method emission entirely.
+     */
+    private static ObjVector collectParamAnnotations(Term paramList) {
+        if (paramList == null || !paramList.notEmpty()) return null;
+        ObjVector out = new ObjVector();
+        boolean anyAnnos = collectParamAnnotationsInto(paramList, out);
+        return anyAnnos ? out : null;
+    }
+
+    private static boolean collectParamAnnotationsInto(Term t,
+            ObjVector out) {
+        if (!t.notEmpty()) return false;
+        if (t instanceof FormalParamList) {
+            FormalParamList list = (FormalParamList) t;
+            boolean a = collectParamAnnotationsInto(list.terms[0], out);
+            boolean b = collectParamAnnotationsInto(list.terms[1], out);
+            return a || b;
+        }
+        if (t instanceof FormalParameter) {
+            ObjVector annos = Parser.getParamAnnotations(t);
+            out.addElement(annos);
+            return annos != null && annos.size() > 0;
+        }
+        return false;
     }
 
     MethodDefinition superMethodCall() {

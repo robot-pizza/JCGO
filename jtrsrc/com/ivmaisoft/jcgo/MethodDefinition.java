@@ -165,6 +165,13 @@ final class MethodDefinition {
     // erased type-var. Set by MethodDeclaration.processPass1.
     private String returnTypeVarName;
 
+    // Slice 49 ext (parameter annotations): per-parameter list of
+    // declaration-annotation type names. Outer ObjVector indexed by
+    // parameter position; each inner element is either an ObjVector
+    // of String names or null. Null overall when no parameter on this
+    // method/constructor is annotated.
+    private ObjVector parameterAnnotationLists;
+
     MethodDefinition(ClassDefinition ourClass) {
         this.ourClass = ourClass;
         id = "<clinit>";
@@ -701,6 +708,18 @@ final class MethodDefinition {
     // `Ljava/lang/Object;`.
     void setReturnTypeVarName(String name) {
         this.returnTypeVarName = name;
+    }
+
+    // Slice 49 ext: store the per-parameter annotation lists.
+    // `lists` is an ObjVector of ObjVector<String> (or null entries
+    // for unannotated params). Set to null when no parameter is
+    // annotated at all.
+    void setParameterAnnotationLists(ObjVector lists) {
+        this.parameterAnnotationLists = lists;
+    }
+
+    ObjVector getParameterAnnotationLists() {
+        return parameterAnnotationLists;
     }
 
     // Slice 50: build a JLS method-signature string per JVMS 4.7.9.1

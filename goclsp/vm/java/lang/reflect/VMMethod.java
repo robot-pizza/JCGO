@@ -930,6 +930,13 @@ final class VMMethod /* hard-coded class name */
  static native String[][] getMethodsAnnos0(
    Class klass); /* JVM-core */ /* const data of const data */
 
+ // Slice 49 ext: per-class array indexed by method slot, each entry
+ // is a String[][] indexed by parameter position with String[] of
+ // annotation type names (or null for unannotated params). Outer
+ // null when no method in the class has parameter annotations.
+ static native String[][][] getMethodsParamAnnos0(
+   Class klass); /* JVM-core */ /* const data of const data */
+
  private static native Class[][] getMethodsTypes0(
    Class klass); /* JVM-core */ /* const data of const data */
 

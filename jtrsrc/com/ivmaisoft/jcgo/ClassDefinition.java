@@ -4996,6 +4996,73 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
         }
         outputContext.cPrint(",\010");
+        // Slice 49 ext: methodsParamAnnos slot — for each reflected
+        // method, emit a String[][] indexed by parameter position
+        // where each cell is a String[] of annotation type names (or
+        // NULL when that parameter isn't annotated). Outer array is
+        // NULL when no method in the class has parameter annotations.
+        if (reflectedMethods != null && reflectedMethods.size() > 0) {
+            StringBuffer paBuf = new StringBuffer();
+            int paCount = 0;
+            boolean anyPa = false;
+            Enumeration en = methodDictionary().keys();
+            while (en.hasMoreElements()) {
+                MethodDefinition md = (MethodDefinition) reflectedMethods
+                        .get((String) en.nextElement());
+                if (md != null) {
+                    ObjVector lists = md.getParameterAnnotationLists();
+                    if (lists != null && lists.size() > 0) {
+                        anyPa = true;
+                        StringBuffer perParams = new StringBuffer();
+                        for (int i = 0; i < lists.size(); i++) {
+                            ObjVector p = (ObjVector) lists.elementAt(i);
+                            if (p != null && p.size() > 0) {
+                                StringBuffer perOne = new StringBuffer();
+                                for (int j = 0; j < p.size(); j++) {
+                                    String tn = (String) p.elementAt(j);
+                                    perOne.append('(')
+                                            .append(Type.cName[Type.CLASSINTERFACE])
+                                            .append(')');
+                                    perOne.append(Main.dict.classNameStringOutput(
+                                            tn, this, true));
+                                    perOne.append(", ");
+                                }
+                                String inner = addImmutableArray(
+                                        Main.dict.get(Names.JAVA_LANG_STRING),
+                                        perOne.toString(), p.size());
+                                perParams.append('(')
+                                        .append(Type.cName[Type.CLASSINTERFACE])
+                                        .append(')').append(inner);
+                            } else {
+                                perParams.append(LexTerm.NULL_STR);
+                            }
+                            perParams.append(", ");
+                        }
+                        String middle = addImmutableArray(
+                                Main.dict.get(Names.JAVA_LANG_STRING)
+                                        .asExprType(1),
+                                perParams.toString(), lists.size());
+                        paBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')').append(middle);
+                    } else {
+                        paBuf.append(LexTerm.NULL_STR);
+                    }
+                    paBuf.append(", ");
+                    paCount++;
+                }
+            }
+            if (anyPa) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING).asExprType(2),
+                        paBuf.toString(), paCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
         if (reflectedMethods != null && reflectedMethods.size() > 0) {
             outputContext.cPrint(cname);
             outputContext.cPrint("__abstract");

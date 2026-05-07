@@ -174,6 +174,22 @@ public final class Method extends AccessibleObject
   return Constructor.copyClassArray(VMMethod.getExceptionTypesInternal(this));
  }
 
+ // Slice 49 ext: JCGO-specific extension that returns the per-
+ // parameter annotation type names (dotted form) emitted by JCGO
+ // codegen. Outer indexed by parameter position; each cell is a
+ // String[] of names or null. Returns null when this method has no
+ // parameter annotations. Proxy-based getParameterAnnotations()
+ // would need annotation argument values + AnnotationInvocationHandler
+ // wiring (deferred); this name-only accessor is enough for the
+ // common "is @NonNull on this param?" pattern.
+ public String[][] jcgoGetParameterAnnotationTypeNames()
+ {
+  String[][][] all = VMMethod.getMethodsParamAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return null;
+  return all[slot];
+ }
+
  // Slice 49: name-only fast path that reads the per-class
  // methodsAnnos table emitted by JCGO codegen. Falls back to the
  // standard Annotation[]-based check (which currently returns false

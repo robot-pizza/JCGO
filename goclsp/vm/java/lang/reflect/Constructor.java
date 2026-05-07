@@ -123,6 +123,19 @@ public final class Constructor extends AccessibleObject
   return clazz;
  }
 
+ // Slice 49 ext: JCGO-specific extension that returns the per-
+ // parameter annotation type names. See Method.jcgoGetParameterAnnotationTypeNames
+ // for the rationale (proxy-based getParameterAnnotations is
+ // deferred). Indexes align with the user-declared parameter list;
+ // synthetic outer-this / outer-locals don't appear.
+ public String[][] jcgoGetParameterAnnotationTypeNames()
+ {
+  String[][][] all = VMMethod.getMethodsParamAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return null;
+  return all[slot];
+ }
+
  // Slice 49: name-only fast path. Constructors are stored in JCGO's
  // method dictionary alongside regular methods, so they share the
  // methodsAnnos table — slot indexing works the same as Method.

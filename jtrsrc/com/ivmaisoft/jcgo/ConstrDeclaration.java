@@ -121,7 +121,39 @@ final class ConstrDeclaration extends LexNode {
         if (annos != null) {
             md.setAnnotationTypeNames(annos);
         }
+        // Slice 49 ext: collect per-parameter annotation lists from
+        // the user-declared FormalParamList in terms[1] (synthetic
+        // outer-this / outer-locals prepended above are stripped from
+        // Java's getParameterAnnotations contract). Indexes align
+        // with the user-declared parameter list.
+        ObjVector paramAnnos = collectParamAnnotations(terms[1]);
+        if (paramAnnos != null) {
+            md.setParameterAnnotationLists(paramAnnos);
+        }
         c.hasConstructor = true;
+    }
+
+    private static ObjVector collectParamAnnotations(Term paramList) {
+        if (paramList == null || !paramList.notEmpty()) return null;
+        ObjVector out = new ObjVector();
+        boolean anyAnnos = collectInto(paramList, out);
+        return anyAnnos ? out : null;
+    }
+
+    private static boolean collectInto(Term t, ObjVector out) {
+        if (!t.notEmpty()) return false;
+        if (t instanceof FormalParamList) {
+            FormalParamList list = (FormalParamList) t;
+            boolean a = collectInto(list.terms[0], out);
+            boolean b = collectInto(list.terms[1], out);
+            return a || b;
+        }
+        if (t instanceof FormalParameter) {
+            ObjVector annos = Parser.getParamAnnotations(t);
+            out.addElement(annos);
+            return annos != null && annos.size() > 0;
+        }
+        return false;
     }
 
     MethodDefinition superMethodCall() {
