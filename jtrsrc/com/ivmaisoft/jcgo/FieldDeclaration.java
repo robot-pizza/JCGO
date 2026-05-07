@@ -90,13 +90,19 @@ final class FieldDeclaration extends LexNode {
         // a single-id type-var that slice 45 erased (e.g. `T value`
         // becomes `Object value`), thread the original name onto the
         // VariableDefinitions so the field's JLS signature can render
-        // it as `TT;`. terms[0] is the field-type AST.
+        // it as `TT;`. terms[0] is the field-type AST. Slice 50
+        // (inner generic-arg retention): also propagate parameterized
+        // args (e.g. `List<T>` → `<TT;>`).
         Term fieldTypeAst = terms[0];
         if (fieldTypeAst instanceof ClassOrIfaceType) {
             Term n = ((ClassOrIfaceType) fieldTypeAst).getNameTerm();
             String tvar = Parser.getErasedTypeVarName(n);
             if (tvar != null) {
                 attachTypeVarNameToDeclarators(terms[2], tvar);
+            }
+            String capturedArgs = Parser.getCapturedGenericArgs(n);
+            if (capturedArgs != null) {
+                attachCapturedArgsToDeclarators(terms[2], capturedArgs);
             }
         }
     }
@@ -129,6 +135,21 @@ final class FieldDeclaration extends LexNode {
             VariableDeclarator vd = (VariableDeclarator) t;
             VariableDefinition v = vd.terms[0].getVariable(false);
             if (v != null) v.setFieldTypeVarName(tvar);
+        }
+    }
+
+    private static void attachCapturedArgsToDeclarators(Term t, String args) {
+        if (!t.notEmpty()) return;
+        if (t instanceof VariableDeclareList) {
+            VariableDeclareList list = (VariableDeclareList) t;
+            attachCapturedArgsToDeclarators(list.terms[0], args);
+            attachCapturedArgsToDeclarators(list.terms[1], args);
+            return;
+        }
+        if (t instanceof VariableDeclarator) {
+            VariableDeclarator vd = (VariableDeclarator) t;
+            VariableDefinition v = vd.terms[0].getVariable(false);
+            if (v != null) v.setFieldTypeCapturedArgs(args);
         }
     }
 }

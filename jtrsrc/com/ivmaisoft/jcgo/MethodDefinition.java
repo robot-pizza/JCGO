@@ -165,6 +165,11 @@ final class MethodDefinition {
     // erased type-var. Set by MethodDeclaration.processPass1.
     private String returnTypeVarName;
 
+    // Slice 50 (inner generic-arg retention): JLS-form captured args
+    // when the return type was parameterized (e.g. `List<T>` keeps
+    // `<TT;>` here). Null when the return type isn't parameterized.
+    private String returnTypeCapturedArgs;
+
     // Slice 49 ext (parameter annotations): per-parameter list of
     // declaration-annotation type names. Outer ObjVector indexed by
     // parameter position; each inner element is either an ObjVector
@@ -710,6 +715,10 @@ final class MethodDefinition {
         this.returnTypeVarName = name;
     }
 
+    void setReturnTypeCapturedArgs(String args) {
+        this.returnTypeCapturedArgs = args;
+    }
+
     // Slice 49 ext: store the per-parameter annotation lists.
     // `lists` is an ObjVector of ObjVector<String> (or null entries
     // for unannotated params). Set to null when no parameter is
@@ -756,6 +765,16 @@ final class MethodDefinition {
         sb.append(')');
         if (returnTypeVarName != null) {
             sb.append('T').append(returnTypeVarName).append(';');
+        } else if (returnTypeCapturedArgs != null && resType != null) {
+            ClassDefinition rcd = resType.signatureClass();
+            if (rcd != null) {
+                sb.append('L')
+                        .append(rcd.name().replace('.', '/'))
+                        .append(returnTypeCapturedArgs)
+                        .append(';');
+            } else {
+                sb.append(resType.getJavaSignature());
+            }
         } else {
             sb.append(isConstructor() ? Type.sig[Type.VOID]
                     : resType.getJavaSignature());
@@ -808,6 +827,21 @@ final class MethodDefinition {
                 if (tvar != null) {
                     sb.append('T').append(tvar).append(';');
                     return;
+                }
+                // Slice 50 (inner generic-arg retention): if the
+                // type had captured generic args, emit
+                // `LName<args>;` so getGenericParameterTypes can
+                // resolve to ParameterizedType.
+                String captured = Parser.getCapturedGenericArgs(name);
+                if (captured != null && fp.exprType() != null) {
+                    ClassDefinition cd = fp.exprType().signatureClass();
+                    if (cd != null) {
+                        sb.append('L')
+                                .append(cd.name().replace('.', '/'))
+                                .append(captured)
+                                .append(';');
+                        return;
+                    }
                 }
             }
             ExpressionType et = fp.exprType();

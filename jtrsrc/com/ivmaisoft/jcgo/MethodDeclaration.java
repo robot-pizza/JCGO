@@ -151,13 +151,20 @@ final class MethodDeclaration extends LexNode {
         // Slice 50 (pre-erasure retention): if the return type was a
         // single-id type-param erased by slice 45, thread the
         // original name through so the JLS signature can render it
-        // as `TT;`. terms[0] is the return-type AST.
+        // as `TT;`. terms[0] is the return-type AST. Slice 50 (inner
+        // generic-arg retention): also propagate any captured
+        // parameterized args (e.g. `List<T>` → `<TT;>`) for the
+        // return-type slot.
         Term returnTypeAst = terms[0];
         if (returnTypeAst instanceof ClassOrIfaceType) {
             Term n = ((ClassOrIfaceType) returnTypeAst).getNameTerm();
             String tvar = Parser.getErasedTypeVarName(n);
             if (tvar != null) {
                 md.setReturnTypeVarName(tvar);
+            }
+            String capturedArgs = Parser.getCapturedGenericArgs(n);
+            if (capturedArgs != null) {
+                md.setReturnTypeCapturedArgs(capturedArgs);
             }
         }
         if (md2 != null && !md2.isAbstract()) {

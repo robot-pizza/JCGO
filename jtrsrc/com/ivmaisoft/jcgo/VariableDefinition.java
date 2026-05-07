@@ -113,6 +113,11 @@ final class VariableDefinition {
     // type-var. Set by FieldDeclaration.processPass1.
     private String fieldTypeVarName;
 
+    // Slice 50 (inner generic-arg retention): JLS-form captured args
+    // when the field's declared type was parameterized (e.g.
+    // `List<T> field` keeps `<TT;>` here). Null otherwise.
+    private String fieldTypeCapturedArgs;
+
     private boolean used;
 
     private boolean initUsedOnly;
@@ -399,12 +404,23 @@ final class VariableDefinition {
         return fieldTypeVarName;
     }
 
+    void setFieldTypeCapturedArgs(String args) {
+        this.fieldTypeCapturedArgs = args;
+    }
+
     // Slice 50: build a JLS field-type signature per JVMS 4.7.9.1.
     // Returns null when the field's type isn't a generic reference
     // (no Signature attribute is needed).
     String fieldGenericSignature() {
         if (fieldTypeVarName != null) {
             return "T" + fieldTypeVarName + ";";
+        }
+        if (fieldTypeCapturedArgs != null && resType != null) {
+            ClassDefinition cd = resType.signatureClass();
+            if (cd != null) {
+                return "L" + cd.name().replace('.', '/')
+                        + fieldTypeCapturedArgs + ";";
+            }
         }
         return null;
     }

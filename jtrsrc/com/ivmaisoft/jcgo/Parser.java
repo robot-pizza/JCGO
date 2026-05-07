@@ -3054,8 +3054,11 @@ d : new PrimaryFieldAccess(a, c));
 		// `List<T>` or `Map.Entry<K, V>`. Slice 24 already handles
 		// generic args inside SimpleType, but the field/method decl
 		// head bypasses SimpleType so we need to consume them here.
+		// Slice 50: capture the inner args (when supportable) so the
+		// field/return type's JLS signature can include them.
+		String capturedArgs = null;
 		if (t.kind == 73) {
-			consumeGenericArgs();
+			capturedArgs = captureGenericArgsToJls();
 		}
 		if (t.kind == 43) {
 			b = DimSpecSeq();
@@ -3064,7 +3067,11 @@ d : new PrimaryFieldAccess(a, c));
 		// Slice 45: the type for an ID-prefixed field/method decl is
 		// constructed manually here, so SimpleType's erasure hook is
 		// bypassed. Apply it directly to the wrapped name.
-		Term typeName = eraseTypeParamRef(new QualifiedName(a, a2));
+		Term qname = new QualifiedName(a, a2);
+		if (capturedArgs != null) {
+			recordCapturedGenericArgs(qname, capturedArgs);
+		}
+		Term typeName = eraseTypeParamRef(qname);
 		z = MethodDeclOrFieldDeclTail(new ClassOrIfaceType(typeName), b, c);
 		return z;
 	}
@@ -3196,11 +3203,17 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		if (t.kind == 1 || t.kind == 7) {
 			a = QualifiedIdentifier();
-			// Slice 24 (Java 5): erase generic type arguments. We just
-			// consume `<...>` and ignore the contents — JCGO works in
-			// raw types and doesn't track parameter bindings.
+			// Slice 24 (Java 5): erase generic type arguments. Slice
+			// 50 (inner generic-arg retention): capture the args as a
+			// JLS-form string side-channeled to the leading name, so
+			// codegen can resolve to ParameterizedType. Falls back to
+			// consumeGenericArgs's discard for wildcards / nested /
+			// arrays which captureGenericArgsToJls doesn't support.
 			if (t.kind == 73) {
-				consumeGenericArgs();
+				String capturedArgs = captureGenericArgsToJls();
+				if (capturedArgs != null) {
+					recordCapturedGenericArgs(a, capturedArgs);
+				}
 			}
 			// Slice 45: erase a single-id name that matches a
 			// declared type-parameter to java.lang.Object.
@@ -3397,6 +3410,110 @@ d : new PrimaryFieldAccess(a, c));
 			}
 		}
 		return null;
+	}
+
+	// Slice 50 (inner generic-arg retention): side channel from a
+	// type Term (the QualifiedName produced by the type's leading
+	// identifier) to the JLS-form generic-args string captured at
+	// parse time, e.g. `<TT;>` for `List<T>`. Read at codegen time
+	// when building method/field signatures so getGenericReturnType
+	// / getGenericType can resolve to ParameterizedType.
+	private static final ObjHashtable capturedGenericArgs =
+			new ObjHashtable();
+
+	static String getCapturedGenericArgs(Term name) {
+		return name == null ? null
+				: (String) capturedGenericArgs.get(name);
+	}
+
+	// Capture-or-discard variant of consumeGenericArgs. Called by
+	// type-use sites that want pre-erasure retention. Consumes the
+	// `<...>` block and:
+	//   - returns the JLS-form `<arg1arg2...>` string when every arg
+	//     is either a simple type-var reference or a single-ident
+	//     class name (qualified via Main.dict at codegen time);
+	//   - returns null and silently consumes the rest of the block
+	//     when a wildcard, array, or nested generic appears.
+	// Either way the tokenizer advances past the closing angle.
+	private static String captureGenericArgsToJls() {
+		Expect(73);  // `<`
+		StringBuffer sb = new StringBuffer();
+		sb.append('<');
+		boolean ok = true;
+		int depth = 1;
+		boolean atArgStart = true;
+		while (depth > 0 && t.kind != 0) {
+			if (t.kind == 75) {
+				Get();
+				depth--;
+				if (depth == 0) {
+					sb.append('>');
+					return ok ? sb.toString() : null;
+				}
+				sb.append('>');
+				atArgStart = true;
+			} else if (t.kind == 70) {
+				// `>>` closes two layers in one token.
+				if (depth < 2) break;
+				Get();
+				depth -= 2;
+				sb.append(">>");
+				if (depth == 0) return ok ? sb.toString() : null;
+				atArgStart = true;
+			} else if (t.kind == 69) {
+				if (depth < 3) break;
+				Get();
+				depth -= 3;
+				sb.append(">>>");
+				if (depth == 0) return ok ? sb.toString() : null;
+				atArgStart = true;
+			} else if (t.kind == 27) {
+				Get();
+				atArgStart = true;
+			} else if (t.kind == 73) {
+				// Nested generics — not yet supported. Consume but
+				// invalidate.
+				Get();
+				depth++;
+				ok = false;
+			} else if (atArgStart && t.kind == 1) {
+				String first = t.val;
+				if ("?".equals(first)) {
+					ok = false;
+					Get();
+					atArgStart = false;
+					continue;
+				}
+				StringBuffer nameBuf = new StringBuffer(first);
+				Get();
+				while (t.kind == 13 && peek(2).kind == 1) {
+					Get();  // .
+					nameBuf.append('.').append(t.val);
+					Get();
+				}
+				String dotted = nameBuf.toString();
+				if (dotted.indexOf('.') < 0
+						&& isActiveTypeParam(dotted)) {
+					sb.append('T').append(dotted).append(';');
+				} else {
+					sb.append('L').append(dotted.replace('.', '/'))
+							.append(';');
+				}
+				atArgStart = false;
+			} else {
+				// Anything else (e.g. `extends`, `super`, `[`) —
+				// not yet supported. Consume but invalidate.
+				ok = false;
+				Get();
+			}
+		}
+		return null;
+	}
+
+	private static void recordCapturedGenericArgs(Term name, String jls) {
+		if (name != null && jls != null) {
+			capturedGenericArgs.put(name, jls);
+		}
 	}
 
 	// Slice 24: balanced consumer for `<...>` type-argument blocks.
