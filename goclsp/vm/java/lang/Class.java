@@ -242,6 +242,13 @@ public final class Class /* hard-coded class name */ /* const data */
  // Annotation[] proxy construction is deferred.
  transient String[] annotationTypeNames; /* hard-coded type and name */
 
+ // Slice 86: parallel to annotationTypeNames; each entry is the raw
+ // textual paren content of the corresponding annotation (e.g.
+ // `value="x"` for `@Anno(value="x")`) or "" when the annotation
+ // has no arguments. Used by VMReflectAnnotations to populate the
+ // memberValues map of each Proxy-built Annotation.
+ transient String[] annotationArgs; /* hard-coded type and name */
+
  Class(Object vmdata, String name, Class superclass, Class[] interfaces,
    int modifiers)
  { /* used by VM classes only */

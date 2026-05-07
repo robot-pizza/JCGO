@@ -471,7 +471,10 @@ final class Names {
             "genericSignature",
             // Slice 49: class-level annotation type names. NULL when
             // the class is unannotated.
-            "annotationTypeNames" };
+            "annotationTypeNames",
+            // Slice 86: parallel String[] of raw arg-text per
+            // annotation; NULL when the class is unannotated.
+            "annotationArgs" };
 
     static final String[] fieldsOrderString = {
             "value", "offset", "count", "cachedHashCode" };

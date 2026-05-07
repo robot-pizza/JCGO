@@ -99,26 +99,61 @@ public class Parser {
 		return pendingAnnotationNames.size();
 	}
 
+	// Slice 86: the args list mirrors the names list 1:1; trim both
+	// in lockstep when taking a slice so the parallel structure stays
+	// aligned for downstream emission.
+	private static ObjVector pendingAnnotationArgsSinceTake;
+
 	private static ObjVector takePendingAnnotationsSince(int snap) {
 		int cur = pendingAnnotationNames.size();
-		if (cur <= snap) return null;
+		if (cur <= snap) {
+			pendingAnnotationArgsSinceTake = null;
+			return null;
+		}
 		ObjVector taken = new ObjVector();
+		ObjVector takenArgs = new ObjVector();
 		for (int i = snap; i < cur; i++) {
 			taken.addElement(pendingAnnotationNames.elementAt(i));
+			if (i < pendingAnnotationArgs.size()) {
+				takenArgs.addElement(pendingAnnotationArgs.elementAt(i));
+			} else {
+				takenArgs.addElement("");
+			}
 		}
-		// Trim pending back to snapshot to avoid stealing annotations
-		// that belong to an enclosing declaration.
 		while (pendingAnnotationNames.size() > snap) {
 			pendingAnnotationNames.removeElementAt(
 					pendingAnnotationNames.size() - 1);
 		}
+		while (pendingAnnotationArgs.size() > snap) {
+			pendingAnnotationArgs.removeElementAt(
+					pendingAnnotationArgs.size() - 1);
+		}
+		pendingAnnotationArgsSinceTake = takenArgs;
 		return taken;
 	}
 
 	private static void recordAnnotations(Term decl, ObjVector names) {
 		if (decl != null && names != null && names.size() > 0) {
 			annotationsByDecl.put(decl, names);
+			// Slice 86: lockstep store of arg-text list captured in
+			// the most recent takePendingAnnotationsSince call.
+			ObjVector args = pendingAnnotationArgsSinceTake;
+			pendingAnnotationArgsSinceTake = null;
+			if (args != null && args.size() == names.size()) {
+				annotationArgsByDecl.put(decl, args);
+			}
 		}
+	}
+
+	// Slice 86: parallel to annotationsByDecl; stores the arg-text
+	// ObjVector for each declaration. Read by codegen so each
+	// emitted annotation type-name has a matching arg-text slot.
+	private static final ObjHashtable annotationArgsByDecl =
+			new ObjHashtable();
+
+	static ObjVector getDeclarationAnnotationArgs(Term decl) {
+		return decl == null ? null
+				: (ObjVector) annotationArgsByDecl.get(decl);
 	}
 
 	// Slice 49 ext (parameter annotations): side channel from a
@@ -4601,6 +4636,41 @@ d : new PrimaryFieldAccess(a, c));
 			SemError("@SafeVarargs requires -source 7 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
+		boolean shouldCapture = !inTypeUseAnnotationContext
+				&& dotted.length() > 0
+				&& !isSourceRetentionAnnotation(dotted);
+		// Walk the optional balanced-paren argument content. Slice 86
+		// follow-up: also reconstruct the raw textual form from the
+		// token stream so runtime proxies can answer the simple
+		// `@Anno("x")` / `@Anno(value="x")` cases.
+		String argText = null;
+		if (t.kind == 11) {
+			Get();
+			StringBuffer raw = shouldCapture ? new StringBuffer() : null;
+			int depth = 1;
+			while (depth > 0 && t.kind != 0) {
+				if (t.kind == 11) {
+					depth++;
+					if (raw != null) raw.append('(');
+				} else if (t.kind == 12) {
+					depth--;
+					if (depth == 0) break;
+					if (raw != null) raw.append(')');
+				} else if (raw != null) {
+					if (raw.length() > 0
+							&& isWordChar(raw.charAt(raw.length() - 1))
+							&& isWordCharStart(t.val)) {
+						raw.append(' ');
+					}
+					raw.append(t.val);
+				}
+				Get();
+			}
+			Expect(12);
+			if (raw != null) {
+				argText = raw.toString().trim();
+			}
+		}
 		// Slice 49: capture the annotation type name for the
 		// surrounding declaration (skipped for type-use positions).
 		// Slice 49 follow-up (retention): well-known SOURCE-retention
@@ -4609,28 +4679,26 @@ d : new PrimaryFieldAccess(a, c));
 		// reflection data. Other RetentionPolicy values aren't
 		// distinguishable at parse time without loading the
 		// annotation class.
-		if (!inTypeUseAnnotationContext && dotted.length() > 0
-				&& !isSourceRetentionAnnotation(dotted)) {
+		if (shouldCapture) {
 			pendingAnnotationNames.addElement(dotted);
+			pendingAnnotationArgs.addElement(argText != null ? argText : "");
 		}
-		// Annotation values are discarded by the AST anyway; accept any
-		// balanced-paren content so all JLS 9.7 forms parse:
-		//   @Foo, @Foo(value), @Foo(name=value), @Foo({a,b}), @Foo(name={a,b}),
-		//   @Foo(name1=v1, name2=v2), @Foo(@Bar(...)), etc.
-		if (t.kind == 11) {
-			Get();
-			int depth = 1;
-			while (depth > 0 && t.kind != 0) {
-				if (t.kind == 11) {
-					depth++;
-				} else if (t.kind == 12) {
-					depth--;
-					if (depth == 0) break;
-				}
-				Get();
-			}
-			Expect(12);
-		}
+	}
+
+	// Slice 86 follow-up: parallel to pendingAnnotationNames; each
+	// entry is the raw textual paren content of the captured
+	// annotation (e.g. `value="x"` for `@Anno(value="x")`) or "" when
+	// the annotation has no arguments.
+	private static ObjVector pendingAnnotationArgs = new ObjVector();
+
+	// Word-boundary heuristics for whitespace between concatenated
+	// token values when reconstructing the raw arg text.
+	private static boolean isWordChar(char c) {
+		return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+	}
+
+	private static boolean isWordCharStart(String s) {
+		return s != null && s.length() > 0 && isWordChar(s.charAt(0));
 	}
 
 	// Slice 49: well-known SOURCE-retention annotations skipped from

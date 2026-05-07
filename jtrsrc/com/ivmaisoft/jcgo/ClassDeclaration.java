@@ -92,6 +92,13 @@ class ClassDeclaration extends LexNode {
         if (annos != null) {
             classDefn.setAnnotationTypeNames(annos);
         }
+        // Slice 86: thread the parallel arg-text list (raw paren
+        // content per annotation) so codegen can emit it alongside
+        // type names for runtime proxy construction.
+        ObjVector annoArgs = Parser.getDeclarationAnnotationArgs(this);
+        if (annoArgs != null) {
+            classDefn.setAnnotationArgs(annoArgs);
+        }
     }
 
     boolean isInterface() {

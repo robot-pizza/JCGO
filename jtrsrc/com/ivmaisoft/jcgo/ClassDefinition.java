@@ -233,6 +233,12 @@ final class ClassDefinition extends ExpressionType {
     // classes with no declaration annotations.
     private ObjVector annotationTypeNames;
 
+    // Slice 86: arg-text strings (raw paren content of each
+    // annotation, e.g. "value=\"unused\"") parallel to
+    // annotationTypeNames. Empty string when an annotation had no
+    // arguments.
+    private ObjVector annotationArgs;
+
     private OrderedMap inclassCalls;
 
     ObjHashtable knownMethodInfos;
@@ -708,6 +714,14 @@ final class ClassDefinition extends ExpressionType {
 
     ObjVector getAnnotationTypeNames() {
         return annotationTypeNames;
+    }
+
+    void setAnnotationArgs(ObjVector args) {
+        this.annotationArgs = args;
+    }
+
+    ObjVector getAnnotationArgs() {
+        return annotationArgs;
     }
 
     // Slice 50: build a JLS class-signature string per JLS 4.3 /
@@ -4227,6 +4241,30 @@ final class ClassDefinition extends ExpressionType {
             } else {
                 outputContext.cPrint(LexTerm.NULL_STR);
             }
+            // Slice 86: emit annotationArgs String[] parallel to
+            // annotationTypeNames. NULL when no class-level
+            // annotation captured argument text.
+            outputContext.cPrint(",\010");
+            if (annotationArgs != null && annotationArgs.size() > 0) {
+                StringBuffer aBuf = new StringBuffer();
+                int aCnt = 0;
+                for (int i = 0; i < annotationArgs.size(); i++) {
+                    String argText = (String) annotationArgs
+                            .elementAt(i);
+                    aBuf.append('(')
+                            .append(Type.cName[Type.CLASSINTERFACE])
+                            .append(')');
+                    aBuf.append(Main.dict.classNameStringOutput(
+                            argText != null ? argText : "", this, true));
+                    aBuf.append(", ");
+                    aCnt++;
+                }
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING),
+                        aBuf.toString(), aCnt));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
             outputContext.cPrint("}");
             if (reflectedFieldNames != null) {
                 VariableDefinition[] fields = new VariableDefinition[reflectedFieldNames
@@ -4435,6 +4473,9 @@ final class ClassDefinition extends ExpressionType {
                 // classes carry no annotations.
                 outputContext.cPrint(", ");
                 outputContext.cPrint(LexTerm.NULL_STR);
+                // Slice 86: trailing annotationArgs slot — same.
+                outputContext.cPrint(", ");
+                outputContext.cPrint(LexTerm.NULL_STR);
                 outputContext.cPrint("}");
             } while (++type <= Type.VOID);
             if (isArray)
@@ -4480,6 +4521,9 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
             // Slice 49: trailing annotationTypeNames slot — array
             // stub classes carry no annotations.
+            outputContext.cPrint(", ");
+            outputContext.cPrint(LexTerm.NULL_STR);
+            // Slice 86: trailing annotationArgs slot — same.
             outputContext.cPrint(", ");
             outputContext.cPrint(LexTerm.NULL_STR);
             outputContext.cPrint("}");
