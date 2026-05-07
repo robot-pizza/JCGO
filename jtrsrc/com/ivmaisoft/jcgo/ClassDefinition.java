@@ -4637,11 +4637,46 @@ final class ClassDefinition extends ExpressionType {
                 Main.dict.classTable[Type.SHORT], modsSBuf.toString(), count)
                 : LexTerm.NULL_STR);
         outputContext.cPrint(",\010");
-        // Slice 50: fieldsSignature slot — currently always null
-        // because field-level generic-type retention isn't
-        // implemented (would require keeping the original `Box<T>`
-        // AST that slice 45 erases to Object).
-        outputContext.cPrint(LexTerm.NULL_STR);
+        // Slice 50 (pre-erasure retention for fields): emit a String
+        // for each reflected field whose declared type was an erased
+        // type-var. NULL slot for fields whose type is a regular
+        // reference (no Signature attribute needed); outer NULL when
+        // no reflected field has retention info.
+        if (reflectedFieldNames != null) {
+            StringBuffer fSigBuf = new StringBuffer();
+            int fSigCount = 0;
+            boolean anyFSig = false;
+            Enumeration en = fieldDictionary().keys();
+            while (en.hasMoreElements()) {
+                String fieldName = (String) en.nextElement();
+                VariableDefinition v = (VariableDefinition) fieldDictionary
+                        .get(fieldName);
+                if (v.used() && reflectedFieldNames.contains(fieldName)) {
+                    String sig = v.fieldGenericSignature();
+                    if (sig != null) {
+                        anyFSig = true;
+                        fSigBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')');
+                        fSigBuf.append(Main.dict.addStringLiteral(sig,
+                                this).stringOutput());
+                    } else {
+                        fSigBuf.append(LexTerm.NULL_STR);
+                    }
+                    fSigBuf.append(", ");
+                    fSigCount++;
+                }
+            }
+            if (anyFSig) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING),
+                        fSigBuf.toString(), fSigCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
         outputContext.cPrint(",\010");
         // Slice 49: fieldsAnnos slot — for each reflected field,
         // emit a String[] of declaration-annotation type names.

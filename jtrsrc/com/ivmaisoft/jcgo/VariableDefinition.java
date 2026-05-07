@@ -107,6 +107,12 @@ final class VariableDefinition {
     // is unannotated. Set by FieldDeclaration.processPass0.
     private ObjVector annotationTypeNames;
 
+    // Slice 50 (pre-erasure retention): the original type-parameter
+    // name when the field's declared type was a single-id type-var
+    // erased by slice 45. Null when the field type wasn't an erased
+    // type-var. Set by FieldDeclaration.processPass1.
+    private String fieldTypeVarName;
+
     private boolean used;
 
     private boolean initUsedOnly;
@@ -380,6 +386,27 @@ final class VariableDefinition {
 
     ObjVector getAnnotationTypeNames() {
         return annotationTypeNames;
+    }
+
+    // Slice 50 (pre-erasure retention): record that the field's
+    // declared type was an erased single-id type-var so the JLS
+    // signature emits as `TName;` instead of being NULL.
+    void setFieldTypeVarName(String name) {
+        this.fieldTypeVarName = name;
+    }
+
+    String getFieldTypeVarName() {
+        return fieldTypeVarName;
+    }
+
+    // Slice 50: build a JLS field-type signature per JVMS 4.7.9.1.
+    // Returns null when the field's type isn't a generic reference
+    // (no Signature attribute is needed).
+    String fieldGenericSignature() {
+        if (fieldTypeVarName != null) {
+            return "T" + fieldTypeVarName + ";";
+        }
+        return null;
     }
 
     boolean isJavaConstant() {

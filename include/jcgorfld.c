@@ -102,9 +102,15 @@ java_lang_reflect_VMField__getFieldsModifiers0__Lc( java_lang_Class klass )
 JCGO_NOSEP_STATIC jObjectArr CFASTCALL
 java_lang_reflect_VMField__getFieldsSignature0__Lc( java_lang_Class klass )
 {
- /* not implemented (slice 50 stage 5 deferred field-level
-    pre-erasure type retention) */
- return jnull;
+ /* Slice 50 (pre-erasure retention for fields): parallel to
+    fieldsName, each slot is the JLS field-type signature for an
+    erased type-var (e.g. "TT;"). NULL slot when the field's type
+    is a regular reference. */
+ CONST struct jcgo_reflect_s *jcgo_reflect =
+  ((jvtable)&JCGO_METHODS_OF(
+  JCGO_FIELD_NZACCESS(klass, vmdata)))->jcgo_reflect;
+ return JCGO_EXPECT_TRUE(jcgo_reflect != NULL) ?
+         jcgo_reflect->fieldsSignature : jnull;
 }
 
 JCGO_NOSEP_STATIC jObjectArr CFASTCALL

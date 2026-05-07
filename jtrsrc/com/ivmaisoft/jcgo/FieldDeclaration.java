@@ -86,6 +86,19 @@ final class FieldDeclaration extends LexNode {
         if (annos != null) {
             attachAnnotationsToDeclarators(terms[2], annos);
         }
+        // Slice 50 (pre-erasure retention): if the declared type was
+        // a single-id type-var that slice 45 erased (e.g. `T value`
+        // becomes `Object value`), thread the original name onto the
+        // VariableDefinitions so the field's JLS signature can render
+        // it as `TT;`. terms[0] is the field-type AST.
+        Term fieldTypeAst = terms[0];
+        if (fieldTypeAst instanceof ClassOrIfaceType) {
+            Term n = ((ClassOrIfaceType) fieldTypeAst).getNameTerm();
+            String tvar = Parser.getErasedTypeVarName(n);
+            if (tvar != null) {
+                attachTypeVarNameToDeclarators(terms[2], tvar);
+            }
+        }
     }
 
     private static void attachAnnotationsToDeclarators(Term t,
@@ -101,6 +114,21 @@ final class FieldDeclaration extends LexNode {
             VariableDeclarator vd = (VariableDeclarator) t;
             VariableDefinition v = vd.terms[0].getVariable(false);
             if (v != null) v.setAnnotationTypeNames(annos);
+        }
+    }
+
+    private static void attachTypeVarNameToDeclarators(Term t, String tvar) {
+        if (!t.notEmpty()) return;
+        if (t instanceof VariableDeclareList) {
+            VariableDeclareList list = (VariableDeclareList) t;
+            attachTypeVarNameToDeclarators(list.terms[0], tvar);
+            attachTypeVarNameToDeclarators(list.terms[1], tvar);
+            return;
+        }
+        if (t instanceof VariableDeclarator) {
+            VariableDeclarator vd = (VariableDeclarator) t;
+            VariableDefinition v = vd.terms[0].getVariable(false);
+            if (v != null) v.setFieldTypeVarName(tvar);
         }
     }
 }
