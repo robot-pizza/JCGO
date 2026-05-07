@@ -3769,13 +3769,20 @@ d : new PrimaryFieldAccess(a, c));
 			TypeUseAnnotationGroup();
 		}
 		a = QualifiedIdentifier();
+		// Slice 51: accept generic args on each type in an
+		// `implements`/`extends interfaces`/`throws`/`permits` list,
+		// e.g. `implements Comparable<String>`. Erased per slice 24.
+		if (t.kind == 73) {
+			consumeGenericArgs();
+		}
+		a = eraseTypeParamRef(a);
 		if (t.kind == 27) {
 			Get();
 			c = ClassTypeList();
 		}
 		z = c != null ? (Term) (new Seq(new ClassOrIfaceType(a), c)) :
 		     new ClassOrIfaceType(a);
-		
+
 		return z;
 	}
 
@@ -3802,7 +3809,17 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b;
 		Expect(25);
+		// Slice 51: accept type-use annotations + generic args on the
+		// supertype — `class Foo extends Bar<String>` etc. Slice 24's
+		// erasure walks the `<...>` and discards.
+		if (t.kind == 10) {
+			TypeUseAnnotationGroup();
+		}
 		b = QualifiedIdentifier();
+		if (t.kind == 73) {
+			consumeGenericArgs();
+		}
+		b = eraseTypeParamRef(b);
 		z = new ClassOrIfaceType(b);
 		return z;
 	}
