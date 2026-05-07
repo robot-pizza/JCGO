@@ -174,6 +174,18 @@ public final class Method extends AccessibleObject
   return Constructor.copyClassArray(VMMethod.getExceptionTypesInternal(this));
  }
 
+ // Slice 86: build Annotation[] for this method via Proxy. Markers
+ // (no members) work fully; annotations with member values throw
+ // IncompleteAnnotationException when those members are queried
+ // because annotation argument values aren't yet captured.
+ public Annotation[] getDeclaredAnnotations()
+ {
+  String[][] all = VMMethod.getMethodsAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return new Annotation[0];
+  return VMReflectAnnotations.build(all[slot], getDeclaringClass());
+ }
+
  // Slice 49 ext: JCGO-specific extension that returns the per-
  // parameter annotation type names (dotted form) emitted by JCGO
  // codegen. Outer indexed by parameter position; each cell is a

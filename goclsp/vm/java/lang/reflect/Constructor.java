@@ -136,6 +136,16 @@ public final class Constructor extends AccessibleObject
   return all[slot];
  }
 
+ // Slice 86: build Annotation[] for this constructor via Proxy.
+ // Constructors share the methodsAnnos table with regular methods.
+ public Annotation[] getDeclaredAnnotations()
+ {
+  String[][] all = VMMethod.getMethodsAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return new Annotation[0];
+  return VMReflectAnnotations.build(all[slot], getDeclaringClass());
+ }
+
  // Slice 49: name-only fast path. Constructors are stored in JCGO's
  // method dictionary alongside regular methods, so they share the
  // methodsAnnos table — slot indexing works the same as Method.

@@ -408,8 +408,14 @@ final class VMClass /* hard-coded class name */
 
  static Annotation[] getDeclaredAnnotations(Class klass)
  {
-  /* not implemented */
-  return new Annotation[0];
+  // Slice 86: build Annotation[] from the side-channel
+  // annotationTypeNames table emitted by JCGO codegen via the
+  // shared VMReflectAnnotations helper. Marker annotations work
+  // fully; valued annotations raise IncompleteAnnotationException
+  // when those members are queried because annotation argument
+  // values aren't yet captured (deferred follow-up).
+  return java.lang.reflect.VMReflectAnnotations.build(
+          klass.annotationTypeNames, klass);
  }
 
  static Class getEnclosingClass(Class klass)

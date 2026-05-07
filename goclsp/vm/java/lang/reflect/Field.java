@@ -44,6 +44,8 @@ import gnu.classpath.VMStackWalker;
 
 import gnu.java.lang.reflect.FieldSignatureParser;
 
+import java.lang.annotation.Annotation;
+
 public final class Field extends AccessibleObject
  implements Member /* hard-coded class name */
 { /* VM class */
@@ -82,6 +84,15 @@ public final class Field extends AccessibleObject
   if (declaringClass == null) /* hack */
    throw new InternalError();
   return declaringClass;
+ }
+
+ // Slice 86: build Annotation[] for this field via Proxy.
+ public Annotation[] getDeclaredAnnotations()
+ {
+  String[][] all = VMField.getFieldsAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return new Annotation[0];
+  return VMReflectAnnotations.build(all[slot], getDeclaringClass());
  }
 
  // Slice 49: name-only fast path that reads the per-class
