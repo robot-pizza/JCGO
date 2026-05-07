@@ -113,6 +113,14 @@ final class ConstrDeclaration extends LexNode {
                         .setLineInfoFrom(this))) != null) {
             fatalError(c, "Duplicate constructor definition: " + id);
         }
+        // Slice 49: thread parser-captured declaration-annotation type
+        // names onto this constructor's MethodDefinition so codegen
+        // emits them in the methodsAnnos array alongside regular
+        // methods.
+        ObjVector annos = Parser.getDeclarationAnnotations(this);
+        if (annos != null) {
+            md.setAnnotationTypeNames(annos);
+        }
         c.hasConstructor = true;
     }
 

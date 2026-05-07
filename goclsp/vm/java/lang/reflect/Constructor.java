@@ -123,6 +123,33 @@ public final class Constructor extends AccessibleObject
   return clazz;
  }
 
+ // Slice 49: name-only fast path. Constructors are stored in JCGO's
+ // method dictionary alongside regular methods, so they share the
+ // methodsAnnos table — slot indexing works the same as Method.
+ public boolean isAnnotationPresent(Class annotationClass)
+ {
+  if (annotationClass == null)
+   return super.isAnnotationPresent(annotationClass);
+  String[][] all = VMMethod.getMethodsAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return super.isAnnotationPresent(annotationClass);
+  String[] mine = all[slot];
+  if (mine == null)
+   return super.isAnnotationPresent(annotationClass);
+  String wanted = annotationClass.getName();
+  for (int i = 0; i < mine.length; i++)
+  {
+   String have = mine[i];
+   if (have == null)
+    continue;
+   if (have.equals(wanted) ||
+       have.endsWith("." + wanted) ||
+       wanted.endsWith("." + have))
+    return true;
+  }
+  return false;
+ }
+
  public String getName()
  {
   return getDeclaringClass().getName();
