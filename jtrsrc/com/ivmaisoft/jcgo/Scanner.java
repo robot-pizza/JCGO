@@ -57,7 +57,15 @@ class Buffer {
 //			BufferedReader s = new BufferedReader(new FileReader(f), bufLen);
 //			buf = new char[bufLen];  // Java 1.1
 
-			FileReader s = new FileReader(f);
+			// Explicit UTF-8: FileReader uses the platform default
+			// charset, which on Windows is typically Windows-1252.
+			// That mis-decodes UTF-8 multi-byte sequences (emoji,
+			// non-ASCII identifiers, smart quotes) into garbage Latin-1
+			// chars instead of the surrogate pairs / non-BMP code units
+			// the rest of the lexer expects. Java 18+ defaults to
+			// UTF-8 but JCGO targets older runtimes too — be explicit.
+			java.io.InputStreamReader s = new java.io.InputStreamReader(
+				new java.io.FileInputStream(f), "UTF-8");
 			buf = new char[bufLen];  // Java 1.1
 
 			int n = s.read(buf); pos = 0;
