@@ -102,6 +102,11 @@ final class VariableDefinition {
 
     private String initTermStrOutValue;
 
+    // Slice 49: parser-captured declaration-annotation type names for
+    // this field (e.g. ["java.lang.Deprecated"]). Null when the field
+    // is unannotated. Set by FieldDeclaration.processPass0.
+    private ObjVector annotationTypeNames;
+
     private boolean used;
 
     private boolean initUsedOnly;
@@ -365,6 +370,16 @@ final class VariableDefinition {
 
     boolean isFinalVariable() {
         return (modifiers & AccModifier.FINAL) != 0;
+    }
+
+    // Slice 49: store the parser-captured declaration-annotation type
+    // names for this field. Called from FieldDeclaration.processPass0.
+    void setAnnotationTypeNames(ObjVector names) {
+        this.annotationTypeNames = names;
+    }
+
+    ObjVector getAnnotationTypeNames() {
+        return annotationTypeNames;
     }
 
     boolean isJavaConstant() {

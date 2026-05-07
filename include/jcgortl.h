@@ -806,12 +806,14 @@ struct jcgo_reflect_s
  jbyteArr fieldsDims;
  jshortArr fieldsModifiers;
  jObjectArr fieldsSignature;  /* slice 50: parallel to fieldsName */
+ jObjectArr fieldsAnnos;      /* slice 49: per-field String[] of declaration-annotation type names; NULL when no field in the class is annotated */
  jObjectArr methodsName;
  jObjectArr methodsTypes;
  jObjectArr methodsDims;
  jObjectArr methodsThrows;
  jshortArr methodsModifiers;
  jObjectArr methodsSignature; /* slice 50: parallel to methodsName */
+ jObjectArr methodsAnnos;     /* slice 49: per-method String[] of declaration-annotation type names; NULL when no method in the class is annotated */
  CONST struct jcgo_methodentry_s *methodsEntry;
 };
 

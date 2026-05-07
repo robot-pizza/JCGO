@@ -4643,6 +4643,56 @@ final class ClassDefinition extends ExpressionType {
         // AST that slice 45 erases to Object).
         outputContext.cPrint(LexTerm.NULL_STR);
         outputContext.cPrint(",\010");
+        // Slice 49: fieldsAnnos slot — for each reflected field,
+        // emit a String[] of declaration-annotation type names.
+        // Outer array is NULL when no reflected field is annotated.
+        if (reflectedFieldNames != null) {
+            StringBuffer fAnnoBuf = new StringBuffer();
+            int fAnnoCount = 0;
+            boolean anyFAnno = false;
+            Enumeration en = fieldDictionary().keys();
+            while (en.hasMoreElements()) {
+                String fieldName = (String) en.nextElement();
+                VariableDefinition v = (VariableDefinition) fieldDictionary
+                        .get(fieldName);
+                if (v.used() && reflectedFieldNames.contains(fieldName)) {
+                    ObjVector vAnnos = v.getAnnotationTypeNames();
+                    if (vAnnos != null && vAnnos.size() > 0) {
+                        anyFAnno = true;
+                        StringBuffer perField = new StringBuffer();
+                        for (int i = 0; i < vAnnos.size(); i++) {
+                            String tn = (String) vAnnos.elementAt(i);
+                            perField.append('(')
+                                    .append(Type.cName[Type.CLASSINTERFACE])
+                                    .append(')');
+                            perField.append(Main.dict.classNameStringOutput(
+                                    tn, this, true));
+                            perField.append(", ");
+                        }
+                        String inner = addImmutableArray(
+                                Main.dict.get(Names.JAVA_LANG_STRING),
+                                perField.toString(), vAnnos.size());
+                        fAnnoBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')').append(inner);
+                    } else {
+                        fAnnoBuf.append(LexTerm.NULL_STR);
+                    }
+                    fAnnoBuf.append(", ");
+                    fAnnoCount++;
+                }
+            }
+            if (anyFAnno) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING).asExprType(1),
+                        fAnnoBuf.toString(), fAnnoCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
         namesSBuf = null;
         typesSBuf = null;
         dimsSBuf = null;
@@ -4839,6 +4889,57 @@ final class ClassDefinition extends ExpressionType {
                 outputContext.cPrint(addImmutableArray(
                         Main.dict.get(Names.JAVA_LANG_STRING),
                         sigsSBuf.toString(), sigCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
+        // Slice 49: methodsAnnos slot — for each reflected method,
+        // emit a String[] of declaration-annotation type names (or
+        // NULL when the method is unannotated). The outer array is
+        // NULL when no method in the class is annotated, so unrelated
+        // classes pay zero bytes.
+        if (reflectedMethods != null && reflectedMethods.size() > 0) {
+            StringBuffer annoBuf = new StringBuffer();
+            int annoCount = 0;
+            boolean anyAnno = false;
+            Enumeration en = methodDictionary().keys();
+            while (en.hasMoreElements()) {
+                MethodDefinition md = (MethodDefinition) reflectedMethods
+                        .get((String) en.nextElement());
+                if (md != null) {
+                    ObjVector mdAnnos = md.getAnnotationTypeNames();
+                    if (mdAnnos != null && mdAnnos.size() > 0) {
+                        anyAnno = true;
+                        StringBuffer perMethod = new StringBuffer();
+                        for (int i = 0; i < mdAnnos.size(); i++) {
+                            String tn = (String) mdAnnos.elementAt(i);
+                            perMethod.append('(')
+                                    .append(Type.cName[Type.CLASSINTERFACE])
+                                    .append(')');
+                            perMethod.append(Main.dict.classNameStringOutput(
+                                    tn, this, true));
+                            perMethod.append(", ");
+                        }
+                        String inner = addImmutableArray(
+                                Main.dict.get(Names.JAVA_LANG_STRING),
+                                perMethod.toString(), mdAnnos.size());
+                        annoBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')').append(inner);
+                    } else {
+                        annoBuf.append(LexTerm.NULL_STR);
+                    }
+                    annoBuf.append(", ");
+                    annoCount++;
+                }
+            }
+            if (anyAnno) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING).asExprType(1),
+                        annoBuf.toString(), annoCount));
             } else {
                 outputContext.cPrint(LexTerm.NULL_STR);
             }

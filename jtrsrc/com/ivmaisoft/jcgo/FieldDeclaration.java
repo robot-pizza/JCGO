@@ -78,5 +78,29 @@ final class FieldDeclaration extends LexNode {
         terms[1].processPass1(c);
         terms[0].processPass1(c);
         terms[2].processPass1(c);
+        // Slice 49: thread the parser-captured declaration-annotation
+        // names onto every VariableDefinition produced by this decl.
+        // For `@Anno T a, b, c;` the annotation applies to all of a,
+        // b, c per JLS.
+        ObjVector annos = Parser.getDeclarationAnnotations(this);
+        if (annos != null) {
+            attachAnnotationsToDeclarators(terms[2], annos);
+        }
+    }
+
+    private static void attachAnnotationsToDeclarators(Term t,
+            ObjVector annos) {
+        if (!t.notEmpty()) return;
+        if (t instanceof VariableDeclareList) {
+            VariableDeclareList list = (VariableDeclareList) t;
+            attachAnnotationsToDeclarators(list.terms[0], annos);
+            attachAnnotationsToDeclarators(list.terms[1], annos);
+            return;
+        }
+        if (t instanceof VariableDeclarator) {
+            VariableDeclarator vd = (VariableDeclarator) t;
+            VariableDefinition v = vd.terms[0].getVariable(false);
+            if (v != null) v.setAnnotationTypeNames(annos);
+        }
     }
 }

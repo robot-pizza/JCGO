@@ -153,6 +153,11 @@ final class MethodDefinition {
     // methods. Set by MethodDeclaration.processPass0.
     private ObjVector genericSignatureData;
 
+    // Slice 49: parser-captured declaration-annotation type names for
+    // this method (e.g. ["java.lang.Override"]). Null when the
+    // method is unannotated. Set by MethodDeclaration.processPass0.
+    private ObjVector annotationTypeNames;
+
     MethodDefinition(ClassDefinition ourClass) {
         this.ourClass = ourClass;
         id = "<clinit>";
@@ -671,6 +676,16 @@ final class MethodDefinition {
     // declares type parameters. Null otherwise.
     void setGenericSignatureData(ObjVector data) {
         this.genericSignatureData = data;
+    }
+
+    // Slice 49: store the parser-captured declaration-annotation type
+    // names. Called from MethodDeclaration.processPass0.
+    void setAnnotationTypeNames(ObjVector names) {
+        this.annotationTypeNames = names;
+    }
+
+    ObjVector getAnnotationTypeNames() {
+        return annotationTypeNames;
     }
 
     // Slice 50: build a JLS method-signature string per JVMS 4.7.9.1

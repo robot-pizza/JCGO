@@ -174,6 +174,34 @@ public final class Method extends AccessibleObject
   return Constructor.copyClassArray(VMMethod.getExceptionTypesInternal(this));
  }
 
+ // Slice 49: name-only fast path that reads the per-class
+ // methodsAnnos table emitted by JCGO codegen. Falls back to the
+ // standard Annotation[]-based check (which currently returns false
+ // because Annotation[] proxy construction isn't wired up yet).
+ public boolean isAnnotationPresent(Class annotationClass)
+ {
+  if (annotationClass == null)
+   return super.isAnnotationPresent(annotationClass);
+  String[][] all = VMMethod.getMethodsAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length)
+   return super.isAnnotationPresent(annotationClass);
+  String[] mine = all[slot];
+  if (mine == null)
+   return super.isAnnotationPresent(annotationClass);
+  String wanted = annotationClass.getName();
+  for (int i = 0; i < mine.length; i++)
+  {
+   String have = mine[i];
+   if (have == null)
+    continue;
+   if (have.equals(wanted) ||
+       have.endsWith("." + wanted) ||
+       wanted.endsWith("." + have))
+    return true;
+  }
+  return false;
+ }
+
  public boolean equals(Object obj)
  {
   if (obj == this)

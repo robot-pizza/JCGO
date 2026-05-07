@@ -134,6 +134,13 @@ final class MethodDeclaration extends LexNode {
         if (genericSig != null) {
             md.setGenericSignatureData(genericSig);
         }
+        // Slice 49: thread the parser-captured declaration-annotation
+        // names onto the MethodDefinition so codegen can emit them
+        // into the per-method reflection metadata.
+        ObjVector annos = Parser.getDeclarationAnnotations(this);
+        if (annos != null) {
+            md.setAnnotationTypeNames(annos);
+        }
         if (md2 != null && !md2.isAbstract()) {
             fatalError(c, "Duplicate method definition: " + id);
         }

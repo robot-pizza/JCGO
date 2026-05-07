@@ -102,8 +102,21 @@ java_lang_reflect_VMField__getFieldsModifiers0__Lc( java_lang_Class klass )
 JCGO_NOSEP_STATIC jObjectArr CFASTCALL
 java_lang_reflect_VMField__getFieldsSignature0__Lc( java_lang_Class klass )
 {
- /* not implemented */
+ /* not implemented (slice 50 stage 5 deferred field-level
+    pre-erasure type retention) */
  return jnull;
+}
+
+JCGO_NOSEP_STATIC jObjectArr CFASTCALL
+java_lang_reflect_VMField__getFieldsAnnos0__Lc( java_lang_Class klass )
+{
+ /* Slice 49: per-field String[] of declaration-annotation type
+    names. Outer NULL when no field in the class is annotated. */
+ CONST struct jcgo_reflect_s *jcgo_reflect =
+  ((jvtable)&JCGO_METHODS_OF(
+  JCGO_FIELD_NZACCESS(klass, vmdata)))->jcgo_reflect;
+ return JCGO_EXPECT_TRUE(jcgo_reflect != NULL) ?
+         jcgo_reflect->fieldsAnnos : jnull;
 }
 
 JCGO_NOSEP_STATIC jint CFASTCALL

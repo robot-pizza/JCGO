@@ -705,6 +705,13 @@ final class VMField /* hard-coded class name */
  private static native String[] getFieldsSignature0(
    Class klass); /* JVM-core */ /* const data */
 
+ // Slice 49: per-class array indexed by field slot, each entry is
+ // a String[] of dotted annotation type names (or null when the
+ // field is unannotated). Outer return is null when no field in
+ // the class is annotated.
+ static native String[][] getFieldsAnnos0(
+   Class klass); /* JVM-core */ /* const data of const data */
+
  private static native int getInt0(Object objOrClass, int slot, int mods,
    int typecode); /* JVM-core */
 
