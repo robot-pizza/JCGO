@@ -147,6 +147,12 @@ final class MethodDefinition {
 
     private ExpressionType curTraceType;
 
+    // Slice 50: parser-captured `<T, U extends X>` declaration list
+    // for a generic method, same paired layout as
+    // ClassDefinition.genericSignatureData. Null for non-generic
+    // methods. Set by MethodDeclaration.processPass0.
+    private ObjVector genericSignatureData;
+
     MethodDefinition(ClassDefinition ourClass) {
         this.ourClass = ourClass;
         id = "<clinit>";
@@ -658,6 +664,58 @@ final class MethodDefinition {
         return methodSignature().getJavaSignature()
                 + (isConstructor() ? Type.sig[Type.VOID] : resType
                         .getJavaSignature());
+    }
+
+    // Slice 50: store the parser-captured `<T, U extends X>` list.
+    // Called from MethodDeclaration.processPass0 when the method
+    // declares type parameters. Null otherwise.
+    void setGenericSignatureData(ObjVector data) {
+        this.genericSignatureData = data;
+    }
+
+    // Slice 50: build a JLS method-signature string per JVMS 4.7.9.1
+    // — `<TypeParams>(ArgTypes)ReturnType^Throws`. Returns null when
+    // the method has no type parameters and no parameter / return
+    // type would benefit from a Signature attribute (i.e. nothing
+    // for the runtime parser to recover that getReturnType doesn't
+    // already give).
+    //
+    // Argument and return types are taken AFTER slice-45 erasure —
+    // a `<T> T foo(T x)` ends up serialized as
+    // `<T:Ljava/lang/Object;>(Ljava/lang/Object;)Ljava/lang/Object;`,
+    // which is enough for Method.getTypeParameters() but not enough
+    // for getGenericReturnType to recover the original `T`. Full
+    // pre-erasure retention is a separate effort.
+    String genericSignatureString() {
+        if (genericSignatureData == null
+                || genericSignatureData.size() == 0) {
+            return null;
+        }
+        StringBuffer sb = new StringBuffer();
+        sb.append('<');
+        for (int i = 0; i < genericSignatureData.size(); i += 2) {
+            String paramName = (String) genericSignatureData.elementAt(i);
+            String bound = (String) genericSignatureData.elementAt(i + 1);
+            sb.append(paramName).append(':');
+            sb.append('L');
+            sb.append((bound != null ? bound : Names.JAVA_LANG_OBJECT)
+                    .replace('.', '/'));
+            sb.append(';');
+        }
+        sb.append('>');
+        sb.append(methodSignature().getJavaSignature());
+        sb.append(isConstructor() ? Type.sig[Type.VOID]
+                : resType.getJavaSignature());
+        if (thrownClasses != null) {
+            for (int i = 0; i < thrownClasses.size(); i++) {
+                ClassDefinition cd = (ClassDefinition) thrownClasses
+                        .elementAt(i);
+                sb.append('^').append('L')
+                        .append(cd.name().replace('.', '/'))
+                        .append(';');
+            }
+        }
+        return sb.toString();
     }
 
     MethodSignature methodSignature() {

@@ -4585,6 +4585,12 @@ final class ClassDefinition extends ExpressionType {
                 Main.dict.classTable[Type.SHORT], modsSBuf.toString(), count)
                 : LexTerm.NULL_STR);
         outputContext.cPrint(",\010");
+        // Slice 50: fieldsSignature slot — currently always null
+        // because field-level generic-type retention isn't
+        // implemented (would require keeping the original `Box<T>`
+        // AST that slice 45 erases to Object).
+        outputContext.cPrint(LexTerm.NULL_STR);
+        outputContext.cPrint(",\010");
         namesSBuf = null;
         typesSBuf = null;
         dimsSBuf = null;
@@ -4747,6 +4753,46 @@ final class ClassDefinition extends ExpressionType {
         outputContext.cPrint(modsSBuf != null ? addImmutableArray(
                 Main.dict.classTable[Type.SHORT], modsSBuf.toString(), count)
                 : LexTerm.NULL_STR);
+        outputContext.cPrint(",\010");
+        // Slice 50: methodsSignature slot — emit a parallel array of
+        // JLS method signatures for the reflected methods. Methods
+        // without type parameters get a NULL slot (no Signature
+        // attribute); generic methods get a `<T:...>(args)return`
+        // string.
+        if (reflectedMethods != null && reflectedMethods.size() > 0) {
+            StringBuffer sigsSBuf = new StringBuffer();
+            int sigCount = 0;
+            boolean anySig = false;
+            Enumeration en = methodDictionary().keys();
+            while (en.hasMoreElements()) {
+                MethodDefinition md = (MethodDefinition) reflectedMethods
+                        .get((String) en.nextElement());
+                if (md != null) {
+                    String sig = md.genericSignatureString();
+                    if (sig != null) {
+                        anySig = true;
+                        sigsSBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')');
+                        sigsSBuf.append(Main.dict.addStringLiteral(sig,
+                                this).stringOutput());
+                    } else {
+                        sigsSBuf.append(LexTerm.NULL_STR);
+                    }
+                    sigsSBuf.append(", ");
+                    sigCount++;
+                }
+            }
+            if (anySig) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING),
+                        sigsSBuf.toString(), sigCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
         outputContext.cPrint(",\010");
         if (reflectedMethods != null && reflectedMethods.size() > 0) {
             outputContext.cPrint(cname);

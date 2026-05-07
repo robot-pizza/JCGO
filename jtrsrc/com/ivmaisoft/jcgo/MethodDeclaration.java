@@ -126,6 +126,14 @@ final class MethodDeclaration extends LexNode {
                 .addMethod(md = new MethodDefinition(c, id, c.modifiers,
                         c.typeClassDefinition.asExprType(c.typeDims), terms[3],
                         terms[5], terms[6]));
+        // Slice 50: thread the parser-captured `<T, U extends X>`
+        // type-param list onto the MethodDefinition so codegen can
+        // serialize it as a JLS method-signature string for
+        // reflection.
+        ObjVector genericSig = Parser.getGenericSignature(this);
+        if (genericSig != null) {
+            md.setGenericSignatureData(genericSig);
+        }
         if (md2 != null && !md2.isAbstract()) {
             fatalError(c, "Duplicate method definition: " + id);
         }

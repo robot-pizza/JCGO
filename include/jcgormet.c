@@ -86,8 +86,14 @@ java_lang_reflect_VMMethod__getMethodsModifiers0__Lc( java_lang_Class klass )
 JCGO_NOSEP_STATIC jObjectArr CFASTCALL
 java_lang_reflect_VMMethod__getMethodsSignature0__Lc( java_lang_Class klass )
 {
- /* not implemented */
- return jnull;
+ /* Slice 50: parallel to methodsName, populated by JCGO codegen
+    for generic methods with `<T, U extends X>` declaration lists.
+    NULL for methods without type parameters. */
+ CONST struct jcgo_reflect_s *jcgo_reflect =
+  ((jvtable)&JCGO_METHODS_OF(
+  JCGO_FIELD_NZACCESS(klass, vmdata)))->jcgo_reflect;
+ return JCGO_EXPECT_TRUE(jcgo_reflect != NULL) ?
+         jcgo_reflect->methodsSignature : jnull;
 }
 
 JCGO_NOSEP_STATIC jObjectArr CFASTCALL

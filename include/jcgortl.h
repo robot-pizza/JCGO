@@ -805,11 +805,13 @@ struct jcgo_reflect_s
  jObjectArr fieldsType;
  jbyteArr fieldsDims;
  jshortArr fieldsModifiers;
+ jObjectArr fieldsSignature;  /* slice 50: parallel to fieldsName */
  jObjectArr methodsName;
  jObjectArr methodsTypes;
  jObjectArr methodsDims;
  jObjectArr methodsThrows;
  jshortArr methodsModifiers;
+ jObjectArr methodsSignature; /* slice 50: parallel to methodsName */
  CONST struct jcgo_methodentry_s *methodsEntry;
 };
 
