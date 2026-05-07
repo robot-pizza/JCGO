@@ -3095,47 +3095,113 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	// Slice 45: if `name` is a single-id QualifiedName matching a
-	// declared type-parameter in any active scope, return a fresh
-	// `java.lang.Object` QualifiedName tree instead. Otherwise return
-	// the input untouched.
+	// declared type-parameter in any active scope, substitute its
+	// erasure. Slice 46: `<T extends Number>` -> Number; unbounded ->
+	// java.lang.Object.
 	private static Term eraseTypeParamRef(Term name) {
 		if (!(name instanceof QualifiedName)) return name;
 		String dotted = ((QualifiedName) name).dottedName();
 		if (dotted == null || dotted.indexOf('.') >= 0) return name;
 		if (!isActiveTypeParam(dotted)) return name;
-		return objectTypeName();
+		String bound = activeBoundFor(dotted);
+		if (bound == null) return objectTypeName();
+		return qualifiedNameFromDotted(bound);
 	}
 
 	private static Term objectTypeName() {
-		return new QualifiedName(
-				new LexTerm(LexTerm.ID, "java"),
-				new QualifiedName(
-						new LexTerm(LexTerm.ID, "lang"),
-						new QualifiedName(
-								new LexTerm(LexTerm.ID, "Object"),
-								Empty.newTerm())));
+		return qualifiedNameFromDotted("java.lang.Object");
+	}
+
+	// Build a QualifiedName tree from a dotted string, e.g.
+	// "java.lang.Number" -> QN("java", QN("lang", QN("Number", Empty))).
+	private static Term qualifiedNameFromDotted(String dotted) {
+		Term tail = Empty.newTerm();
+		int idx = dotted.length();
+		while (idx > 0) {
+			int prev = dotted.lastIndexOf('.', idx - 1);
+			String part = dotted.substring(prev + 1, idx);
+			tail = new QualifiedName(new LexTerm(LexTerm.ID, part), tail);
+			idx = prev;
+		}
+		return tail;
 	}
 
 	// Slice 45: capture type-parameter NAMES from a `<T, U extends X>`
 	// declaration list (NOT a type-arg list — those go through
-	// consumeGenericArgs). Returns an ObjVector of String. Same
-	// token-walking shape as consumeGenericArgs, but at depth 1 grabs
-	// the first identifier of each comma-separated entry.
+	// consumeGenericArgs). Same token-walking shape as
+	// consumeGenericArgs, but at depth 1 grabs the first identifier
+	// of each comma-separated entry. Slice 46: also captures the
+	// FIRST class name after `extends` (the JLS-erasure bound) so
+	// `<T extends Number>` substitutes Number, not Object. Multi-bound
+	// `& X` and the bound's own type-args (e.g. `Comparable<T>`) are
+	// walked but not retained.
+	//
+	// Result is a flat ObjVector with paired entries: index 2*i is
+	// the param name (String), 2*i+1 is the dotted bound name
+	// (String) or null when unbounded.
 	private static ObjVector consumeTypeParamList() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
 			SemError("generic type parameters requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		ObjVector names = new ObjVector();
+		ObjVector entries = new ObjVector();
 		Expect(73);  // `<`
 		int depth = 1;
-		boolean expectName = true;  // next ID at depth 1 is a param name
+		// State at depth 1:
+		//   EXPECT_NAME  -> next ID is a param name
+		//   AFTER_NAME   -> waiting for `,`/`>`/`extends`
+		//   IN_BOUND     -> capturing dotted bound head
+		//   AFTER_BOUND  -> bound captured, skipping `& X` etc.
+		final int EXPECT_NAME = 0;
+		final int AFTER_NAME = 1;
+		final int IN_BOUND_HEAD = 2;
+		final int AFTER_BOUND = 3;
+		int state = EXPECT_NAME;
+		StringBuffer boundBuf = null;
+		boolean boundExpectDotIdent = false;
 		while (depth > 0 && t.kind != 0) {
-			if (depth == 1 && expectName && t.kind == 1) {
-				names.addElement(t.val);
-				expectName = false;
-				Get();
-				continue;
+			if (depth == 1) {
+				if (state == EXPECT_NAME && t.kind == 1) {
+					entries.addElement(t.val);
+					entries.addElement(null);
+					state = AFTER_NAME;
+					Get();
+					continue;
+				}
+				if (state == AFTER_NAME && t.kind == 25) {
+					// `extends` — start capturing bound head.
+					state = IN_BOUND_HEAD;
+					boundBuf = new StringBuffer();
+					boundExpectDotIdent = false;
+					Get();
+					continue;
+				}
+				if (state == IN_BOUND_HEAD && !boundExpectDotIdent
+						&& (t.kind == 1 || t.kind == 7)) {
+					boundBuf.append(t.val);
+					boundExpectDotIdent = true;
+					Get();
+					continue;
+				}
+				if (state == IN_BOUND_HEAD && boundExpectDotIdent
+						&& t.kind == 13) {
+					boundBuf.append('.');
+					boundExpectDotIdent = false;
+					Get();
+					continue;
+				}
+				if (state == IN_BOUND_HEAD) {
+					// Anything else closes the bound head — record it
+					// and transition. Generic args / `& X` / `,` / `>`
+					// are handled by the depth/comma logic below.
+					if (boundBuf.length() > 0) {
+						entries.setElementAt(boundBuf.toString(),
+								entries.size() - 1);
+					}
+					state = AFTER_BOUND;
+					boundBuf = null;
+					// fall through to handle the current token
+				}
 			}
 			if (t.kind == 73) {
 				Get();
@@ -3152,13 +3218,13 @@ d : new PrimaryFieldAccess(a, c));
 				Get();
 				depth -= 3;
 			} else if (t.kind == 27 && depth == 1) {
-				expectName = true;
+				state = EXPECT_NAME;
 				Get();
 			} else {
 				Get();
 			}
 		}
-		return names;
+		return entries;
 	}
 
 	private static void pushTypeParamScope(ObjVector names) {
@@ -3174,11 +3240,27 @@ d : new PrimaryFieldAccess(a, c));
 	private static boolean isActiveTypeParam(String name) {
 		for (int i = typeParamScopes.size() - 1; i >= 0; i--) {
 			ObjVector scope = (ObjVector) typeParamScopes.elementAt(i);
-			for (int j = 0; j < scope.size(); j++) {
+			// Slice 46: scope is [name, bound, name, bound, ...].
+			for (int j = 0; j < scope.size(); j += 2) {
 				if (name.equals(scope.elementAt(j))) return true;
 			}
 		}
 		return false;
+	}
+
+	// Slice 46: dotted bound name for an active type-param, or null
+	// if unbounded / not in scope. Innermost scope wins on shadowing.
+	private static String activeBoundFor(String name) {
+		for (int i = typeParamScopes.size() - 1; i >= 0; i--) {
+			ObjVector scope = (ObjVector) typeParamScopes.elementAt(i);
+			for (int j = 0; j < scope.size(); j += 2) {
+				if (name.equals(scope.elementAt(j))) {
+					Object b = scope.elementAt(j + 1);
+					return b == null ? null : (String) b;
+				}
+			}
+		}
+		return null;
 	}
 
 	// Slice 24: balanced consumer for `<...>` type-argument blocks.
