@@ -1001,25 +1001,59 @@ public final class Class /* hard-coded class name */ /* const data */
  {
   // Slice 49: name-only fast path. JCGO emits annotation type names
   // into a String[] on the Class struct; we return true if the
-  // requested annotation's class name is present. Falls back to the
-  // standard Annotation[] iteration for cases the side-channel
-  // doesn't cover (e.g. inherited annotations).
-  if (annotationClass != null && annotationTypeNames != null)
+  // requested annotation's class name is present. Walks the
+  // superclass chain when the annotation type itself is annotated
+  // with @java.lang.annotation.Inherited (JLS 9.6.4.3). Falls back
+  // to the standard Annotation[] iteration when the side-channel
+  // is null for this class.
+  if (annotationClass == null)
+   return getAnnotation(annotationClass) != null;
+  String wanted = annotationClass.getName();
+  if (annotationTypeNames != null
+      && namesContain(annotationTypeNames, wanted))
+   return true;
+  if (annotationTypeNames == null
+      && getAnnotation(annotationClass) != null)
+   return true;
+  if (isInheritableAnnotation(annotationClass))
   {
-   String wanted = annotationClass.getName();
-   for (int i = 0; i < annotationTypeNames.length; i++)
-   {
-    String have = annotationTypeNames[i];
-    if (have == null)
-     continue;
-    if (have.equals(wanted) ||
-        have.endsWith("." + wanted) ||
-        wanted.endsWith("." + have))
-     return true;
-   }
-   return false;
+   Class sc = getSuperclass();
+   if (sc != null && sc.isAnnotationPresent(annotationClass))
+    return true;
   }
-  return getAnnotation(annotationClass) != null;
+  return false;
+ }
+
+ private static boolean namesContain(String[] names, String wanted)
+ {
+  for (int i = 0; i < names.length; i++)
+  {
+   String have = names[i];
+   if (have == null)
+    continue;
+   if (have.equals(wanted) ||
+       have.endsWith("." + wanted) ||
+       wanted.endsWith("." + have))
+    return true;
+  }
+  return false;
+ }
+
+ // Slice 49 (extended): is `annotationClass` itself annotated with
+ // @java.lang.annotation.Inherited? Reads the annotation type's own
+ // annotationTypeNames table directly to avoid recursion through
+ // isAnnotationPresent (which would itself try to walk super for
+ // @Inherited and risk a loop).
+ private static boolean isInheritableAnnotation(Class annotationClass)
+ {
+  String name = annotationClass.getName();
+  // @Inherited itself isn't @Inherited — short-circuit before the
+  // table read so the recursion bottoms out cleanly.
+  if ("java.lang.annotation.Inherited".equals(name))
+   return false;
+  String[] meta = annotationClass.annotationTypeNames;
+  return meta != null
+      && namesContain(meta, "java.lang.annotation.Inherited");
  }
 
  public boolean isAnonymousClass()
