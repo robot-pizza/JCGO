@@ -125,6 +125,18 @@ java_lang_reflect_VMField__getFieldsAnnos0__Lc( java_lang_Class klass )
          jcgo_reflect->fieldsAnnos : jnull;
 }
 
+JCGO_NOSEP_STATIC jObjectArr CFASTCALL
+java_lang_reflect_VMField__getFieldsAnnoArgs0__Lc( java_lang_Class klass )
+{
+ /* Slice 86: per-field String[] of raw annotation arg-text,
+    parallel to fieldsAnnos. */
+ CONST struct jcgo_reflect_s *jcgo_reflect =
+  ((jvtable)&JCGO_METHODS_OF(
+  JCGO_FIELD_NZACCESS(klass, vmdata)))->jcgo_reflect;
+ return JCGO_EXPECT_TRUE(jcgo_reflect != NULL) ?
+         jcgo_reflect->fieldsAnnoArgs : jnull;
+}
+
 JCGO_NOSEP_STATIC jint CFASTCALL
 java_lang_reflect_VMField__getInt0__LoIII( java_lang_Object objOrClass,
  jint slot, jint mods, jint typecode )

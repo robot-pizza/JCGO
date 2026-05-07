@@ -4786,6 +4786,56 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
         }
         outputContext.cPrint(",\010");
+        // Slice 86: fieldsAnnoArgs — per-field String[] parallel to
+        // fieldsAnnos with the raw arg-text per annotation. Outer
+        // NULL when no reflected field has annotation argument text.
+        if (reflectedFieldNames != null) {
+            StringBuffer fArgBuf = new StringBuffer();
+            int fArgCount = 0;
+            boolean anyFArg = false;
+            Enumeration en = fieldDictionary().keys();
+            while (en.hasMoreElements()) {
+                String fieldName = (String) en.nextElement();
+                VariableDefinition v = (VariableDefinition) fieldDictionary
+                        .get(fieldName);
+                if (v.used() && reflectedFieldNames.contains(fieldName)) {
+                    ObjVector vArgs = v.getAnnotationArgs();
+                    if (vArgs != null && vArgs.size() > 0) {
+                        anyFArg = true;
+                        StringBuffer perField = new StringBuffer();
+                        for (int i = 0; i < vArgs.size(); i++) {
+                            String s = (String) vArgs.elementAt(i);
+                            perField.append('(')
+                                    .append(Type.cName[Type.CLASSINTERFACE])
+                                    .append(')');
+                            perField.append(Main.dict.classNameStringOutput(
+                                    s != null ? s : "", this, true));
+                            perField.append(", ");
+                        }
+                        String inner = addImmutableArray(
+                                Main.dict.get(Names.JAVA_LANG_STRING),
+                                perField.toString(), vArgs.size());
+                        fArgBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')').append(inner);
+                    } else {
+                        fArgBuf.append(LexTerm.NULL_STR);
+                    }
+                    fArgBuf.append(", ");
+                    fArgCount++;
+                }
+            }
+            if (anyFArg) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING).asExprType(1),
+                        fArgBuf.toString(), fArgCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
         namesSBuf = null;
         typesSBuf = null;
         dimsSBuf = null;
@@ -5033,6 +5083,54 @@ final class ClassDefinition extends ExpressionType {
                 outputContext.cPrint(addImmutableArray(
                         Main.dict.get(Names.JAVA_LANG_STRING).asExprType(1),
                         annoBuf.toString(), annoCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
+        // Slice 86: methodsAnnoArgs — per-method String[] parallel
+        // to methodsAnnos with the raw arg-text per annotation.
+        if (reflectedMethods != null && reflectedMethods.size() > 0) {
+            StringBuffer aaBuf = new StringBuffer();
+            int aaCount = 0;
+            boolean anyAa = false;
+            Enumeration en = methodDictionary().keys();
+            while (en.hasMoreElements()) {
+                MethodDefinition md = (MethodDefinition) reflectedMethods
+                        .get((String) en.nextElement());
+                if (md != null) {
+                    ObjVector mdArgs = md.getAnnotationArgs();
+                    if (mdArgs != null && mdArgs.size() > 0) {
+                        anyAa = true;
+                        StringBuffer perMethod = new StringBuffer();
+                        for (int i = 0; i < mdArgs.size(); i++) {
+                            String s = (String) mdArgs.elementAt(i);
+                            perMethod.append('(')
+                                    .append(Type.cName[Type.CLASSINTERFACE])
+                                    .append(')');
+                            perMethod.append(Main.dict.classNameStringOutput(
+                                    s != null ? s : "", this, true));
+                            perMethod.append(", ");
+                        }
+                        String inner = addImmutableArray(
+                                Main.dict.get(Names.JAVA_LANG_STRING),
+                                perMethod.toString(), mdArgs.size());
+                        aaBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')').append(inner);
+                    } else {
+                        aaBuf.append(LexTerm.NULL_STR);
+                    }
+                    aaBuf.append(", ");
+                    aaCount++;
+                }
+            }
+            if (anyAa) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING).asExprType(1),
+                        aaBuf.toString(), aaCount));
             } else {
                 outputContext.cPrint(LexTerm.NULL_STR);
             }

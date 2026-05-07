@@ -158,6 +158,9 @@ final class MethodDefinition {
     // method is unannotated. Set by MethodDeclaration.processPass0.
     private ObjVector annotationTypeNames;
 
+    // Slice 86: parallel arg-text strings for the same annotations.
+    private ObjVector annotationArgs;
+
     // Slice 50 (pre-erasure retention): the original type-parameter
     // name when the return type was a single-id type-var that slice
     // 45 erased (e.g. `<T> T foo()` keeps "T" here even though
@@ -705,6 +708,15 @@ final class MethodDefinition {
 
     ObjVector getAnnotationTypeNames() {
         return annotationTypeNames;
+    }
+
+    // Slice 86: store the parallel arg-text list.
+    void setAnnotationArgs(ObjVector args) {
+        this.annotationArgs = args;
+    }
+
+    ObjVector getAnnotationArgs() {
+        return annotationArgs;
     }
 
     // Slice 50 (pre-erasure retention): record that the return type

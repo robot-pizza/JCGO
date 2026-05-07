@@ -143,7 +143,11 @@ public final class Constructor extends AccessibleObject
   String[][] all = VMMethod.getMethodsAnnos0(getDeclaringClass());
   if (all == null || slot < 0 || slot >= all.length)
    return new Annotation[0];
-  return VMReflectAnnotations.build(all[slot], getDeclaringClass());
+  String[][] allArgs = VMMethod.getMethodsAnnoArgs0(getDeclaringClass());
+  String[] mineArgs = allArgs != null && slot < allArgs.length
+          ? allArgs[slot] : null;
+  return VMReflectAnnotations.build(all[slot], mineArgs,
+          getDeclaringClass());
  }
 
  // Slice 49: name-only fast path. Constructors are stored in JCGO's

@@ -141,6 +141,11 @@ final class MethodDeclaration extends LexNode {
         if (annos != null) {
             md.setAnnotationTypeNames(annos);
         }
+        // Slice 86: parallel arg-text list.
+        ObjVector annoArgs = Parser.getDeclarationAnnotationArgs(this);
+        if (annoArgs != null) {
+            md.setAnnotationArgs(annoArgs);
+        }
         // Slice 49 ext: collect per-parameter annotation lists by
         // walking the FormalParamList AST. Each entry is either an
         // ObjVector<String> of annotation type names or null.

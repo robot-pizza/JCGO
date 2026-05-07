@@ -107,6 +107,9 @@ final class VariableDefinition {
     // is unannotated. Set by FieldDeclaration.processPass0.
     private ObjVector annotationTypeNames;
 
+    // Slice 86: parallel arg-text strings for the same annotations.
+    private ObjVector annotationArgs;
+
     // Slice 50 (pre-erasure retention): the original type-parameter
     // name when the field's declared type was a single-id type-var
     // erased by slice 45. Null when the field type wasn't an erased
@@ -391,6 +394,14 @@ final class VariableDefinition {
 
     ObjVector getAnnotationTypeNames() {
         return annotationTypeNames;
+    }
+
+    void setAnnotationArgs(ObjVector args) {
+        this.annotationArgs = args;
+    }
+
+    ObjVector getAnnotationArgs() {
+        return annotationArgs;
     }
 
     // Slice 50 (pre-erasure retention): record that the field's

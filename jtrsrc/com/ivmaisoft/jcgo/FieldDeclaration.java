@@ -86,6 +86,11 @@ final class FieldDeclaration extends LexNode {
         if (annos != null) {
             attachAnnotationsToDeclarators(terms[2], annos);
         }
+        // Slice 86: parallel arg-text list.
+        ObjVector annoArgs = Parser.getDeclarationAnnotationArgs(this);
+        if (annoArgs != null) {
+            attachAnnoArgsToDeclarators(terms[2], annoArgs);
+        }
         // Slice 50 (pre-erasure retention): if the declared type was
         // a single-id type-var that slice 45 erased (e.g. `T value`
         // becomes `Object value`), thread the original name onto the
@@ -120,6 +125,22 @@ final class FieldDeclaration extends LexNode {
             VariableDeclarator vd = (VariableDeclarator) t;
             VariableDefinition v = vd.terms[0].getVariable(false);
             if (v != null) v.setAnnotationTypeNames(annos);
+        }
+    }
+
+    private static void attachAnnoArgsToDeclarators(Term t,
+            ObjVector args) {
+        if (!t.notEmpty()) return;
+        if (t instanceof VariableDeclareList) {
+            VariableDeclareList list = (VariableDeclareList) t;
+            attachAnnoArgsToDeclarators(list.terms[0], args);
+            attachAnnoArgsToDeclarators(list.terms[1], args);
+            return;
+        }
+        if (t instanceof VariableDeclarator) {
+            VariableDeclarator vd = (VariableDeclarator) t;
+            VariableDefinition v = vd.terms[0].getVariable(false);
+            if (v != null) v.setAnnotationArgs(args);
         }
     }
 

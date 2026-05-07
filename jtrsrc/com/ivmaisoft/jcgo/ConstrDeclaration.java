@@ -121,6 +121,11 @@ final class ConstrDeclaration extends LexNode {
         if (annos != null) {
             md.setAnnotationTypeNames(annos);
         }
+        // Slice 86: parallel arg-text list.
+        ObjVector annoArgs = Parser.getDeclarationAnnotationArgs(this);
+        if (annoArgs != null) {
+            md.setAnnotationArgs(annoArgs);
+        }
         // Slice 49 ext: collect per-parameter annotation lists from
         // the user-declared FormalParamList in terms[1] (synthetic
         // outer-this / outer-locals prepended above are stripped from

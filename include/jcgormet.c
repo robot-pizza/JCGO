@@ -111,6 +111,18 @@ java_lang_reflect_VMMethod__getMethodsAnnos0__Lc( java_lang_Class klass )
 }
 
 JCGO_NOSEP_STATIC jObjectArr CFASTCALL
+java_lang_reflect_VMMethod__getMethodsAnnoArgs0__Lc( java_lang_Class klass )
+{
+ /* Slice 86: per-method String[] of raw annotation arg-text,
+    parallel to methodsAnnos. */
+ CONST struct jcgo_reflect_s *jcgo_reflect =
+  ((jvtable)&JCGO_METHODS_OF(
+  JCGO_FIELD_NZACCESS(klass, vmdata)))->jcgo_reflect;
+ return JCGO_EXPECT_TRUE(jcgo_reflect != NULL) ?
+         jcgo_reflect->methodsAnnoArgs : jnull;
+}
+
+JCGO_NOSEP_STATIC jObjectArr CFASTCALL
 java_lang_reflect_VMMethod__getMethodsParamAnnos0__Lc( java_lang_Class klass )
 {
  /* Slice 49 ext: parallel to methodsName, each slot is a String[][]

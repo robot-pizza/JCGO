@@ -923,11 +923,17 @@ final class VMMethod /* hard-coded class name */
  private static native String[] getMethodsSignature0(
    Class klass); /* JVM-core */ /* const data */
 
- // Slice 49: per-class array indexed by method slot, each entry is
+  // Slice 49: per-class array indexed by method slot, each entry is
  // a String[] of dotted annotation type names (or null when the
  // method is unannotated). Outer return is null when no method in
  // the class is annotated.
  static native String[][] getMethodsAnnos0(
+   Class klass); /* JVM-core */ /* const data of const data */
+
+ // Slice 86: per-class array indexed by method slot, each entry is
+ // a String[] parallel to getMethodsAnnos0()'s entry, holding the
+ // raw textual paren content of each annotation.
+ static native String[][] getMethodsAnnoArgs0(
    Class klass); /* JVM-core */ /* const data of const data */
 
  // Slice 49 ext: per-class array indexed by method slot, each entry

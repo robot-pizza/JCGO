@@ -712,6 +712,12 @@ final class VMField /* hard-coded class name */
  static native String[][] getFieldsAnnos0(
    Class klass); /* JVM-core */ /* const data of const data */
 
+ // Slice 86: per-class array indexed by field slot, each entry is
+ // a String[] parallel to getFieldsAnnos0()'s entry, holding the
+ // raw textual paren content of each annotation.
+ static native String[][] getFieldsAnnoArgs0(
+   Class klass); /* JVM-core */ /* const data of const data */
+
  private static native int getInt0(Object objOrClass, int slot, int mods,
    int typecode); /* JVM-core */
 
