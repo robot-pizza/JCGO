@@ -3811,18 +3811,26 @@ d : new PrimaryFieldAccess(a, c));
 		Expect(25);
 		// Slice 51: accept type-use annotations + generic args on the
 		// supertype — `class Foo extends Bar<String>` etc. Slice 24's
-		// erasure walks the `<...>` and discards.
+		// erasure walks the `<...>` and discards. The presence of
+		// generic args is recorded so bridge-method synthesis (also
+		// slice 51) can identify covariant-override candidates.
 		if (t.kind == 10) {
 			TypeUseAnnotationGroup();
 		}
 		b = QualifiedIdentifier();
 		if (t.kind == 73) {
 			consumeGenericArgs();
+			lastExtendsHadTypeArgs = true;
 		}
 		b = eraseTypeParamRef(b);
 		z = new ClassOrIfaceType(b);
 		return z;
 	}
+
+	// Slice 51: set true by ExtendsType when the supertype had a
+	// `<TypeArgs>` suffix. Captured by ClassDeclaration immediately
+	// after the extends parse, then cleared.
+	private static boolean lastExtendsHadTypeArgs;
 
 	private static Term InterfaceDeclaration() {
 		Term z;
@@ -3873,9 +3881,12 @@ d : new PrimaryFieldAccess(a, c));
 			pushed = true;
 		}
 		ObjVector permits = null;
+		boolean extendsParameterized = false;
 		try {
+			lastExtendsHadTypeArgs = false;
 			if (t.kind == 25) {
 				c = ExtendsType();
+				extendsParameterized = lastExtendsHadTypeArgs;
 			}
 			if (t.kind == 26) {
 				d = ImplementsTypes();
@@ -3886,6 +3897,15 @@ d : new PrimaryFieldAccess(a, c));
 			e = ClassBody();
 		} finally {
 			if (pushed) popTypeParamScope();
+		}
+		// Slice 51: when extending a parameterized supertype, walk
+		// the body and synthesize bridge methods for each declared
+		// method whose param list contains a non-Object reference
+		// type. Without these the analyzer doesn't recognize the
+		// covariant override and the parent's method gets
+		// devirtualized away.
+		if (extendsParameterized && e.notEmpty()) {
+			e = BridgeSynthesis.wrap(e);
 		}
 		z = new ClassDeclaration(b, c, d, e);
 		recordGenericSignature(z, captured);
