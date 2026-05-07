@@ -104,6 +104,25 @@ public final class VMReflectAnnotations
   Map m = new HashMap();
   if (argText == null || argText.length() == 0)
    return m;
+  // Build a key→return-type map so parsing can be type-directed
+  // for enum constants, classes, and arrays. If annoClass can't be
+  // loaded the map stays empty and parsing falls back to type-
+  // agnostic literal recognition.
+  Map memberTypes = new HashMap();
+  if (annoClass != null)
+  {
+   try
+   {
+    Method[] methods = annoClass.getDeclaredMethods();
+    for (int i = 0; i < methods.length; i++)
+     memberTypes.put(methods[i].getName(),
+              methods[i].getReturnType());
+   }
+   catch (Throwable t)
+   {
+    // proceed with empty map
+   }
+  }
   String[] segments = splitTopLevelCommas(argText);
   for (int i = 0; i < segments.length; i++)
   {
@@ -123,13 +142,81 @@ public final class VMReflectAnnotations
     key = "value";
     rest = trimmed;
    }
-   Object val = parseValue(rest, declaring, loader);
+   Class targetType = (Class) memberTypes.get(key);
+   Object val = parseValueWithType(rest, targetType, declaring, loader);
    if (val != null)
     m.put(key, val);
   }
   if (annoClass != null && !m.isEmpty())
    coerceArrayMembers(annoClass, m);
   return m;
+ }
+
+ private static Object parseValueWithType(String s, Class targetType,
+   Class declaring, ClassLoader loader)
+ {
+  if (s == null)
+   return null;
+  s = s.trim();
+  if (s.length() == 0)
+   return null;
+  // Brace-array literal `{a, b, c}` — produces an array of
+  // targetType's component type, recursing into parseValueWithType
+  // for each element.
+  if (s.charAt(0) == '{' && s.charAt(s.length() - 1) == '}')
+  {
+   String inner = s.substring(1, s.length() - 1).trim();
+   Class comp = targetType != null && targetType.isArray()
+            ? targetType.getComponentType() : Object.class;
+   if (inner.length() == 0)
+   {
+    try
+    {
+     return java.lang.reflect.Array.newInstance(comp, 0);
+    }
+    catch (Throwable t)
+    {
+     return null;
+    }
+   }
+   String[] elems = splitTopLevelCommas(inner);
+   try
+   {
+    Object arr = java.lang.reflect.Array.newInstance(comp, elems.length);
+    for (int i = 0; i < elems.length; i++)
+    {
+     Object e = parseValueWithType(elems[i].trim(), comp, declaring,
+              loader);
+     if (e == null)
+      return null;
+     java.lang.reflect.Array.set(arr, i, e);
+    }
+    return arr;
+   }
+   catch (Throwable t)
+   {
+    return null;
+   }
+  }
+  // Enum constant — `MEMBER` or `Enum.MEMBER`. Type-directed:
+  // resolve via Enum.valueOf when the target is an enum.
+  if (targetType != null && targetType.isEnum())
+  {
+   String enumName = s;
+   int dot = s.lastIndexOf('.');
+   if (dot >= 0)
+    enumName = s.substring(dot + 1).trim();
+   try
+   {
+    return Enum.valueOf(targetType, enumName);
+   }
+   catch (RuntimeException e)
+   {
+    return null;
+   }
+  }
+  // String / boolean / class / number literals — type-agnostic.
+  return parseValue(s, declaring, loader);
  }
 
  private static String[] splitTopLevelCommas(String s)
