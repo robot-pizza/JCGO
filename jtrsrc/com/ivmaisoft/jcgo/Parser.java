@@ -806,6 +806,14 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term UnaryWithPara() {
 		Term z;
 		Term b, d = null;
+		// Slice 44: `(@Anno Type) expr` — type-use annotation on a cast.
+		// Annotations are only legal on types in this position, so an
+		// `@` here unambiguously means we're parsing an annotated cast
+		// type. Skip the annotation; the rest of the type parses as a
+		// name expression and is reinterpreted by UnaryWithParaTail.
+		if (t.kind == 10) {
+			TypeUseAnnotationGroup();
+		}
 		// Slice 41: parenthesized switch expression — `(switch(...){...})`.
 		// Used as a grouping wrapper around a switch when it appears
 		// inline in larger expressions (e.g. `"x" + (switch ...) + "y"`).
@@ -2464,6 +2472,13 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term JavaStatement() {
 		Term z;
 		z = Empty.term;
+		// Slice 44: leading annotation on a statement-level local var
+		// (`@Anno T x = ...;`). Skip the annotation group and
+		// re-dispatch to JavaStatement.
+		if (t.kind == 10) {
+			AnnotationGroup();
+			return JavaStatement();
+		}
 		switch (t.kind) {
 		case 9: {
 			Get();
@@ -3030,9 +3045,25 @@ d : new PrimaryFieldAccess(a, c));
 		return z;
 	}
 
+	// Slice 44 (Java 8 / JSR 308): type-use annotations. Parse and
+	// discard `@Anno`/`@Anno(args)` at the head of a type. Gated at
+	// JLS_80 so older source levels still reject them.
+	private static void TypeUseAnnotationGroup() {
+		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+			SemError("type-use annotation requires -source 8 or higher (got "
+				+ JavaVersion.format(Main.dict.javaVersion) + ")");
+		}
+		AnnotationGroup();
+	}
+
 	private static Term SimpleType() {
 		Term z;
 		z = Empty.term; Term a;
+		// Slice 44 (Java 8 / JSR 308): type-use annotations. Parse and
+		// discard `@Anno` (or `@Anno(args)`) at the head of a type.
+		if (t.kind == 10) {
+			TypeUseAnnotationGroup();
+		}
 		if (t.kind == 1 || t.kind == 7) {
 			a = QualifiedIdentifier();
 			// Slice 24 (Java 5): erase generic type arguments. We just
@@ -3168,6 +3199,11 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term BlockStatement() {
 		Term z;
 		z = Empty.term;
+		// Slice 44: leading type-use annotation on a local var decl
+		// (`@Anno T x = ...;`) at block level.
+		if (t.kind == 10) {
+			AnnotationGroup();
+		}
 		if (t.kind == 20) {
 			Get();
 			z = FinalClsDeclOrVarDeclStmtTail();
@@ -3183,7 +3219,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term a, b = null;
 		a = BlockStatement();
-		if (StartOf(13)) {
+		if (StartOf(13) || t.kind == 10) {
 			b = BlockStatementSeq();
 		}
 		z = b != null ? new Seq(a, b) : a;
@@ -3232,7 +3268,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term b = Empty.term;
 		Expect(28);
-		if (StartOf(13)) {
+		if (StartOf(13) || t.kind == 10) {
 			b = BlockStatementSeq();
 		}
 		Expect(29);
@@ -3428,6 +3464,10 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ClassTypeList() {
 		Term z;
 		Term a, c = null;
+		// Slice 44: type-use annotations on throws clause types.
+		if (t.kind == 10) {
+			TypeUseAnnotationGroup();
+		}
 		a = QualifiedIdentifier();
 		if (t.kind == 27) {
 			Get();
