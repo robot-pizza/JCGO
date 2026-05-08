@@ -759,11 +759,8 @@ final class ClassDefinition extends ExpressionType {
         for (int i = 0; i < genericSignatureData.size(); i += 2) {
             String paramName = (String) genericSignatureData.elementAt(i);
             String bound = (String) genericSignatureData.elementAt(i + 1);
-            sb.append(paramName).append(':');
-            sb.append('L');
-            sb.append(MethodDefinition.resolveBoundDottedName(bound)
-                    .replace('.', '/'));
-            sb.append(';');
+            sb.append(paramName);
+            MethodDefinition.appendBoundSegments(sb, bound);
         }
         sb.append('>');
         sb.append('L');

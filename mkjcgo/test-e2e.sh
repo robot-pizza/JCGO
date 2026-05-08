@@ -81,6 +81,10 @@ Holder.pass.params[0] = TV(U)
 Holder.value.genericType = TV(U)
 firstNum(1,2) = 1
 firstNum(7,3) = 3
+firstNum.typeParams.length = 1
+firstNum.X.bounds.length = 2
+  bound[0] = class java.lang.Number
+  bound[1] = interface java.lang.Comparable
 WithConsts.LIMIT = 42
 WithConsts.LABEL = anno-const
 WithConsts.LIMIT (via reflection) = 42
@@ -137,5 +141,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime, @interface consts)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime, @interface consts, multi-bound type-vars)"
 exit 0

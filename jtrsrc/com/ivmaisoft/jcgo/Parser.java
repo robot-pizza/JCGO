@@ -3403,6 +3403,23 @@ d : new PrimaryFieldAccess(a, c));
 					boundBuf = null;
 					// fall through to handle the current token
 				}
+				// Multi-bound (`<T extends A & B>`): seeing `&` after a
+				// captured bound starts another bound head. The full
+				// list is encoded into a single bound string with `&`
+				// as the separator; genericSignatureString splits and
+				// emits each as a separate `:L<name>;` segment per
+				// JVMS 4.7.9.1.
+				if (state == AFTER_BOUND && t.kind == 78) {
+					Get();
+					state = IN_BOUND_HEAD;
+					boundBuf = new StringBuffer();
+					String prev = (String) entries.elementAt(entries.size() - 1);
+					if (prev != null) {
+						boundBuf.append(prev).append('&');
+					}
+					boundExpectDotIdent = false;
+					continue;
+				}
 			}
 			if (t.kind == 73) {
 				Get();
@@ -3451,13 +3468,19 @@ d : new PrimaryFieldAccess(a, c));
 
 	// Slice 46: dotted bound name for an active type-param, or null
 	// if unbounded / not in scope. Innermost scope wins on shadowing.
+	// TODO #10: for multi-bound `<T extends A & B>`, the scope stores
+	// the bounds as a single `A&B` string. Erasure uses the FIRST
+	// bound per JLS 4.4, so split here and return the leftmost part.
 	private static String activeBoundFor(String name) {
 		for (int i = typeParamScopes.size() - 1; i >= 0; i--) {
 			ObjVector scope = (ObjVector) typeParamScopes.elementAt(i);
 			for (int j = 0; j < scope.size(); j += 2) {
 				if (name.equals(scope.elementAt(j))) {
 					Object b = scope.elementAt(j + 1);
-					return b == null ? null : (String) b;
+					if (b == null) return null;
+					String s = (String) b;
+					int amp = s.indexOf('&');
+					return amp < 0 ? s : s.substring(0, amp);
 				}
 			}
 		}

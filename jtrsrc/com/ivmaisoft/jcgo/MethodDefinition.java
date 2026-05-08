@@ -801,10 +801,8 @@ final class MethodDefinition {
             for (int i = 0; i < genericSignatureData.size(); i += 2) {
                 String paramName = (String) genericSignatureData.elementAt(i);
                 String bound = (String) genericSignatureData.elementAt(i + 1);
-                sb.append(paramName).append(':');
-                sb.append('L');
-                sb.append(resolveBoundDottedName(bound).replace('.', '/'));
-                sb.append(';');
+                sb.append(paramName);
+                appendBoundSegments(sb, bound);
             }
             sb.append('>');
         }
@@ -855,6 +853,30 @@ final class MethodDefinition {
         String javaLang = "java.lang." + bound;
         if (Main.dict.alreadyKnown(javaLang)) return javaLang;
         return bound;
+    }
+
+    // TODO #10 partial: emit `:L<bound>;` once for a single bound, or
+    // `:L<a>;:L<b>;...` for the multi-bound `<T extends A & B>` form
+    // (JVMS 4.7.9.1). The bound string was joined with `&` in
+    // Parser.consumeTypeParamList.
+    static void appendBoundSegments(StringBuffer sb, String bound) {
+        if (bound == null || bound.length() == 0) {
+            sb.append(':').append('L')
+                    .append(Names.JAVA_LANG_OBJECT.replace('.', '/'))
+                    .append(';');
+            return;
+        }
+        int start = 0;
+        for (;;) {
+            int amp = bound.indexOf('&', start);
+            String part = amp < 0 ? bound.substring(start)
+                    : bound.substring(start, amp);
+            sb.append(':').append('L')
+                    .append(resolveBoundDottedName(part).replace('.', '/'))
+                    .append(';');
+            if (amp < 0) return;
+            start = amp + 1;
+        }
     }
 
     // True if any parameter's type was an erased type-var or carried

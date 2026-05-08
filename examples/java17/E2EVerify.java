@@ -118,6 +118,18 @@ public class E2EVerify {
     System.out.println("firstNum(7,3) = " + ev.firstNum(
         Integer.valueOf(7), Integer.valueOf(3)));
 
+    Method fn = E2EVerify.class.getMethod("firstNum",
+        new Class[]{ Number.class, Number.class });
+    TypeVariable[] fnVars = fn.getTypeParameters();
+    System.out.println("firstNum.typeParams.length = " + fnVars.length);
+    if (fnVars.length > 0) {
+      Type[] bounds = fnVars[0].getBounds();
+      System.out.println("firstNum.X.bounds.length = " + bounds.length);
+      for (int i = 0; i < bounds.length; i++) {
+        System.out.println("  bound[" + i + "] = " + bounds[i]);
+      }
+    }
+
     System.out.println("WithConsts.LIMIT = " + WithConsts.LIMIT);
     System.out.println("WithConsts.LABEL = " + WithConsts.LABEL);
     java.lang.reflect.Field limitField =
