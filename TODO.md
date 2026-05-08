@@ -23,14 +23,6 @@ reflection, and custom @MyTag reflection.
 
 ### Parser gaps
 
-- [ ] **Method-reference real-expression receivers.** Paren-wrapped
-  qualified-name receivers (`(System.out)::println`) now parse
-  (03f8a74). Real expression receivers like `(getThing())::method`
-  or `((Cast) x)::method` still don't, because the receiver value
-  has to be evaluated once at lambda-creation time and captured in
-  a synthetic field on the lifted anonymous class. The existing
-  user workaround is to write a regular lambda
-  (`() -> getThing().method()`).
 
 ### Runtime / native — Android parity
 
