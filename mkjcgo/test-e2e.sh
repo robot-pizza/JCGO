@@ -54,7 +54,7 @@ SRCS="$SRCS -src classpath-0.93/external/sax"
 SRCS="$SRCS -src classpath-0.93/external/w3c_dom"
 
 echo "Translating E2EVerify..."
-java -Xss1M -jar jcgo.jar -source 8 -d "$OUT" -src examples/java8 $SRCS \
+java -Xss1M -jar jcgo.jar -source 17 -d "$OUT" -src examples/java17 $SRCS \
     E2EVerify >"$OUT/translate.log" 2>&1
 
 echo "Compiling..."
@@ -97,6 +97,9 @@ MyTag.getDeclaredAnnotations.length = 2
 MyTag.isAnnotation = true
 WithDefaults.isAnnotation = true
 E2EVerify.isAnnotation = false
+Circle.describe = circle
+Square.describe = square
+Circle isInstance Shape = true
 Child.isAnnotationPresent(Family) = true
 Child.isAnnotationPresent(NotInherited) = false
 Parent.isAnnotationPresent(Family) = true
@@ -129,5 +132,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime)"
 exit 0

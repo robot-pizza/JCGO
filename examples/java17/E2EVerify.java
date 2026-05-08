@@ -56,6 +56,10 @@ public class E2EVerify {
   @Tag("beta")
   public void multiTagged() {}
 
+  sealed interface Shape permits Circle, Square {}
+  static final class Circle implements Shape { public String describe() { return "circle"; } }
+  static final class Square implements Shape { public String describe() { return "square"; } }
+
   public static void main(String[] args) throws Exception {
     Producer p = new StringProducer();
     Object out = p.produce();
@@ -149,6 +153,13 @@ public class E2EVerify {
         + WithDefaults.class.isAnnotation());
     System.out.println("E2EVerify.isAnnotation = "
         + E2EVerify.class.isAnnotation());
+
+    Shape c = new Circle();
+    Shape s = new Square();
+    System.out.println("Circle.describe = " + ((Circle) c).describe());
+    System.out.println("Square.describe = " + ((Square) s).describe());
+    System.out.println("Circle isInstance Shape = "
+        + Shape.class.isInstance(c));
 
     System.out.println("Child.isAnnotationPresent(Family) = "
         + Child.class.isAnnotationPresent(Family.class));
