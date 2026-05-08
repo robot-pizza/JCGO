@@ -697,6 +697,13 @@ public final class VMReflectAnnotations
    c = tryLoad("java.lang." + name, loader);
    if (c != null)
     return c;
+   // TODO #4: also try java.lang.annotation.* — built-in JLS 5+
+   // meta-annotations live there (Retention, Target, Documented,
+   // Inherited, Repeatable). The parser captures the unqualified
+   // name and the declaring class's package may not contain them.
+   c = tryLoad("java.lang.annotation." + name, loader);
+   if (c != null)
+    return c;
   }
   return null;
  }

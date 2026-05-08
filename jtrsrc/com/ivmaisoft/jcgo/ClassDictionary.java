@@ -592,6 +592,14 @@ final class ClassDictionary {
                 ClassDefinition cd = get(jl);
                 if (cd.isInterface()) return cd;
             }
+            // TODO #4: also try java.lang.annotation.* (Retention,
+            // Target, Documented, Inherited, Repeatable). Mirrors the
+            // runtime resolver in VMReflectAnnotations.resolveAnnotationClass.
+            String jla = "java.lang.annotation." + name;
+            if (existsOrInner(jla)) {
+                ClassDefinition cd = get(jla);
+                if (cd.isInterface()) return cd;
+            }
         }
         return null;
     }

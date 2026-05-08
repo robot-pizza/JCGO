@@ -4409,10 +4409,17 @@ d : new PrimaryFieldAccess(a, c));
 		// Slice 19c: an enum with at least one anonymous-body constant
 		// is implicitly NOT final — the constants are runtime
 		// subclasses (JLS 8.9). Otherwise the default is final.
+		// JCGO synthesizes STATIC because nested enums need it
+		// (definePass0 only auto-adds STATIC for non-interface nested-
+		// in-interface cases). The ENUM bit signals to processPass0
+		// that the STATIC came from synthesis, so the "static at
+		// top-level" rejection doesn't fire.
+		AccModifier enumBit = new AccModifier(AccModifier.ENUM);
+		AccModifier staticBit = new AccModifier(AccModifier.STATIC);
 		Term modifiers = EnumSynthesis.anyConstantHasBody(constants)
-			? new AccModifier(AccModifier.STATIC)
-			: (Term) new Seq(new AccModifier(AccModifier.STATIC),
-				new AccModifier(AccModifier.FINAL));
+			? (Term) new Seq(enumBit, staticBit)
+			: (Term) new Seq(enumBit,
+				new Seq(staticBit, new AccModifier(AccModifier.FINAL)));
 		return new TypeDeclaration(modifiers, classDecl);
 	}
 

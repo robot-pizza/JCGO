@@ -63,7 +63,9 @@ class ClassDeclaration extends LexNode {
         }
         if ((c.modifiers & (AccModifier.SYNCHRONIZED | AccModifier.VOLATILE
                 | AccModifier.TRANSIENT | AccModifier.NATIVE)) != 0
-                || ((c.modifiers & AccModifier.STATIC) != 0 && c.currentClass == null)) {
+                || ((c.modifiers & AccModifier.STATIC) != 0
+                    && (c.modifiers & AccModifier.ENUM) == 0
+                    && c.currentClass == null)) {
             fatalError(c, "Illegal modifier specified for class: " + name);
         }
         if ((c.modifiers & AccModifier.FINAL) != 0 && isInterface()) {

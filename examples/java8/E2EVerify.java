@@ -105,6 +105,11 @@ public class E2EVerify {
     System.out.println("WithDefaults.level default = "
         + levelMember.getDefaultValue());
 
+    Annotation[] myTagMeta = MyTag.class.getDeclaredAnnotations();
+    System.out.println("MyTag.getDeclaredAnnotations.length = " + myTagMeta.length);
+    for (int i = 0; i < myTagMeta.length; i++) {
+      System.out.println("  myTagMeta[" + i + "] = " + myTagMeta[i].annotationType().getName());
+    }
     System.out.println("MyTag.isAnnotation = " + MyTag.class.isAnnotation());
     System.out.println("WithDefaults.isAnnotation = "
         + WithDefaults.class.isAnnotation());

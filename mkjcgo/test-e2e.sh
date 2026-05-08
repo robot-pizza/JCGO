@@ -86,6 +86,9 @@ allDefaults @WithDefaults.value = ok
 allDefaults @WithDefaults.level = 5
 WithDefaults.value default = ok
 WithDefaults.level default = 5
+MyTag.getDeclaredAnnotations.length = 2
+  myTagMeta[0] = java.lang.annotation.Retention
+  myTagMeta[1] = java.lang.annotation.Target
 MyTag.isAnnotation = true
 WithDefaults.isAnnotation = true
 E2EVerify.isAnnotation = false
@@ -115,5 +118,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations)"
 exit 0
