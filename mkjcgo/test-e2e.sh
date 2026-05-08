@@ -74,6 +74,11 @@ EXPECTED='bridge.produce returned: produced-string
 bridge.return is String? true
 pickFirst.getGenericReturnType class = gnu.java.lang.reflect.TypeVariableImpl
 pickFirst.getGenericReturnType name = T
+pickFirst.getGenericParameterTypes.length = 2
+  param[0] = gnu.java.lang.reflect.TypeVariableImpl(name=T)
+  param[1] = gnu.java.lang.reflect.TypeVariableImpl(name=T)
+Holder.pass.params[0] = TV(U)
+Holder.value.genericType = TV(U)
 oldMethod isAnnotationPresent(Deprecated) = true
 oldMethod getDeclaredAnnotations.length = 1
 oldMethod ann[0].annotationType = java.lang.Deprecated
@@ -124,5 +129,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields)"
 exit 0

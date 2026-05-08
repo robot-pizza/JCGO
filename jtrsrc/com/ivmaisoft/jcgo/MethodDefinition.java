@@ -787,21 +787,27 @@ final class MethodDefinition {
     // type-var. Inner generic args (e.g. `List<T>`) are not yet
     // retained — they come out as the raw `Ljava/util/List;`.
     String genericSignatureString() {
-        if (genericSignatureData == null
-                || genericSignatureData.size() == 0) {
+        boolean hasTypeParams = genericSignatureData != null
+                && genericSignatureData.size() > 0;
+        boolean interestingParams = paramListHasGenericInfo(paramList);
+        boolean interestingReturn = returnTypeVarName != null
+                || returnTypeCapturedArgs != null;
+        if (!hasTypeParams && !interestingParams && !interestingReturn) {
             return null;
         }
         StringBuffer sb = new StringBuffer();
-        sb.append('<');
-        for (int i = 0; i < genericSignatureData.size(); i += 2) {
-            String paramName = (String) genericSignatureData.elementAt(i);
-            String bound = (String) genericSignatureData.elementAt(i + 1);
-            sb.append(paramName).append(':');
-            sb.append('L');
-            sb.append(resolveBoundDottedName(bound).replace('.', '/'));
-            sb.append(';');
+        if (hasTypeParams) {
+            sb.append('<');
+            for (int i = 0; i < genericSignatureData.size(); i += 2) {
+                String paramName = (String) genericSignatureData.elementAt(i);
+                String bound = (String) genericSignatureData.elementAt(i + 1);
+                sb.append(paramName).append(':');
+                sb.append('L');
+                sb.append(resolveBoundDottedName(bound).replace('.', '/'));
+                sb.append(';');
+            }
+            sb.append('>');
         }
-        sb.append('>');
         sb.append('(');
         appendParamSignaturesFromAst(sb, paramList);
         sb.append(')');
@@ -849,6 +855,27 @@ final class MethodDefinition {
         String javaLang = "java.lang." + bound;
         if (Main.dict.alreadyKnown(javaLang)) return javaLang;
         return bound;
+    }
+
+    // True if any parameter's type was an erased type-var or carried
+    // captured generic args. Drives the "should I emit a generic
+    // signature even though the method has no <T> of its own?" check.
+    private static boolean paramListHasGenericInfo(Term params) {
+        if (params == null || !params.notEmpty()) return false;
+        if (params instanceof FormalParamList) {
+            FormalParamList list = (FormalParamList) params;
+            return paramListHasGenericInfo(list.terms[0])
+                    || paramListHasGenericInfo(list.terms[1]);
+        }
+        if (params instanceof FormalParameter) {
+            Term type = ((FormalParameter) params).terms[1];
+            if (type instanceof ClassOrIfaceType) {
+                Term name = ((ClassOrIfaceType) type).getNameTerm();
+                if (Parser.getErasedTypeVarName(name) != null) return true;
+                if (Parser.getCapturedGenericArgs(name) != null) return true;
+            }
+        }
+        return false;
     }
 
     private static void appendParamSignaturesFromAst(StringBuffer sb,

@@ -32,6 +32,11 @@ public class E2EVerify {
 
   public <T extends Number> T pickFirst(T a, T b) { return a; }
 
+  public static class Holder<U> {
+    public U value;
+    public U pass(U x) { return x; }
+  }
+
   @Deprecated
   public void oldMethod() {}
 
@@ -69,6 +74,31 @@ public class E2EVerify {
       System.out.println("pickFirst.getGenericReturnType (not a TypeVariable): "
           + rt);
     }
+    Type[] genParams = pf.getGenericParameterTypes();
+    System.out.println("pickFirst.getGenericParameterTypes.length = "
+        + genParams.length);
+    for (int i = 0; i < genParams.length; i++) {
+      Type pt = genParams[i];
+      String desc = pt.getClass().getName();
+      if (pt instanceof TypeVariable) {
+        desc += "(name=" + ((TypeVariable) pt).getName() + ")";
+      }
+      System.out.println("  param[" + i + "] = " + desc);
+    }
+
+    Method hp = Holder.class.getMethod("pass", new Class[]{ Object.class });
+    Type[] hpParams = hp.getGenericParameterTypes();
+    System.out.println("Holder.pass.params[0] = "
+        + (hpParams[0] instanceof TypeVariable
+            ? "TV(" + ((TypeVariable) hpParams[0]).getName() + ")"
+            : hpParams[0].toString()));
+
+    java.lang.reflect.Field hv = Holder.class.getField("value");
+    Type ft = hv.getGenericType();
+    System.out.println("Holder.value.genericType = "
+        + (ft instanceof TypeVariable
+            ? "TV(" + ((TypeVariable) ft).getName() + ")"
+            : ft.toString()));
 
     Method old = E2EVerify.class.getMethod("oldMethod", new Class[0]);
     System.out.println("oldMethod isAnnotationPresent(Deprecated) = "
