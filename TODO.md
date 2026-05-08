@@ -24,8 +24,6 @@ reflection, and custom @MyTag reflection.
 
 ### Verification gaps (claimed at codegen, not at runtime)
 
-- [ ] **Sealed enforcement at runtime** — codegen-time gating only.
-  Should add a runtime fixture exercising a banned subclass.
 
 ### Parser gaps
 
