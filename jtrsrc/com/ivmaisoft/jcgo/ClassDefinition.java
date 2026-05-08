@@ -239,6 +239,10 @@ final class ClassDefinition extends ExpressionType {
     // arguments.
     private ObjVector annotationArgs;
 
+    // Gap #2: gate on first registration of annotation proxies so the
+    // walk runs exactly once per class once it becomes `used`.
+    private boolean annotationProxiesRegistered;
+
     private OrderedMap inclassCalls;
 
     ObjHashtable knownMethodInfos;
@@ -3390,6 +3394,64 @@ final class ClassDefinition extends ExpressionType {
         return bestMethod;
     }
 
+    // Gap #2: walk class-level / method / field / parameter annotation
+    // type-name tables and register a Proxy class for each unique
+    // annotation type. Without this, runtime VMReflectAnnotations.build
+    // can't construct proxies for annotations referenced only via the
+    // table (the codegen-time Proxy scanner only sees explicit
+    // newProxyInstance calls). Returns true if any new class was marked
+    // used, so the reachability fix-point picks it up.
+    private boolean registerAnnotationProxies() {
+        boolean progress = false;
+        if (annotationTypeNames != null) {
+            progress |= registerAnnotationList(annotationTypeNames);
+        }
+        Enumeration en = methodDictionary().keys();
+        while (en.hasMoreElements()) {
+            MethodDefinition md = getMethodNoInheritance((String) en
+                    .nextElement());
+            if (md == null) continue;
+            ObjVector ann = md.getAnnotationTypeNames();
+            if (ann != null) {
+                progress |= registerAnnotationList(ann);
+            }
+            ObjVector params = md.getParameterAnnotationLists();
+            if (params != null) {
+                for (int i = 0; i < params.size(); i++) {
+                    Object slot = params.elementAt(i);
+                    if (slot instanceof ObjVector) {
+                        progress |= registerAnnotationList((ObjVector) slot);
+                    }
+                }
+            }
+        }
+        Enumeration en2 = fieldDictionary().keys();
+        while (en2.hasMoreElements()) {
+            VariableDefinition v = (VariableDefinition) fieldDictionary
+                    .get(en2.nextElement());
+            if (v == null) continue;
+            ObjVector ann = v.getAnnotationTypeNames();
+            if (ann != null) {
+                progress |= registerAnnotationList(ann);
+            }
+        }
+        return progress;
+    }
+
+    private boolean registerAnnotationList(ObjVector names) {
+        boolean progress = false;
+        for (int i = 0; i < names.size(); i++) {
+            Object o = names.elementAt(i);
+            if (!(o instanceof String)) continue;
+            String n = (String) o;
+            if (n.length() == 0) continue;
+            if (Main.dict.addAnnotationProxyByName(n, this, this) != null) {
+                progress = true;
+            }
+        }
+        return progress;
+    }
+
     int producePassOne() {
         if (type != Type.CLASSINTERFACE)
             return 0;
@@ -3405,6 +3467,12 @@ final class ClassDefinition extends ExpressionType {
             count++;
         }
         if (used) {
+            if (!annotationProxiesRegistered) {
+                annotationProxiesRegistered = true;
+                if (registerAnnotationProxies()) {
+                    count++;
+                }
+            }
             if (Main.dict.verboseTracing) {
                 Main.dict.message("Processing used class: " + name);
             }

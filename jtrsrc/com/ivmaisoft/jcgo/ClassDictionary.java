@@ -558,6 +558,44 @@ final class ClassDictionary {
         } while (cnt > 0);
     }
 
+    ExpressionType addAnnotationProxyByName(String name,
+            ClassDefinition declaring, ClassDefinition forClass) {
+        if (name == null || name.length() == 0) return null;
+        ClassDefinition cd = resolveAnnotation(name, declaring);
+        if (cd == null) return null;
+        cd.markUsed();
+        ObjVector v = new ObjVector();
+        v.addElement(cd);
+        return addProxyClass(v, forClass);
+    }
+
+    private ClassDefinition resolveAnnotation(String name,
+            ClassDefinition declaring) {
+        if (existsOrInner(name)) {
+            ClassDefinition cd = get(name);
+            return cd.isInterface() ? cd : null;
+        }
+        if (name.indexOf('.') < 0) {
+            if (declaring != null) {
+                String declName = declaring.name();
+                int dot = declName.lastIndexOf('.');
+                if (dot > 0) {
+                    String pkgName = declName.substring(0, dot) + "." + name;
+                    if (existsOrInner(pkgName)) {
+                        ClassDefinition cd = get(pkgName);
+                        if (cd.isInterface()) return cd;
+                    }
+                }
+            }
+            String jl = "java.lang." + name;
+            if (existsOrInner(jl)) {
+                ClassDefinition cd = get(jl);
+                if (cd.isInterface()) return cd;
+            }
+        }
+        return null;
+    }
+
     ExpressionType addProxyClass(ObjVector parmSig, ClassDefinition forClass) {
         String className = "$Proxy";
         if (!exists(className)) {

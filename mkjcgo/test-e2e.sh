@@ -76,7 +76,10 @@ pickFirst.getGenericReturnType class = gnu.java.lang.reflect.TypeVariableImpl
 pickFirst.getGenericReturnType name = T
 oldMethod isAnnotationPresent(Deprecated) = true
 oldMethod getDeclaredAnnotations.length = 1
-oldMethod ann[0].annotationType = java.lang.Deprecated'
+oldMethod ann[0].annotationType = java.lang.Deprecated
+taggedMethod isAnnotationPresent(MyTag) = true
+taggedMethod getDeclaredAnnotations.length = 1
+taggedMethod ann[0].annotationType = MyTag'
 
 # Strip CRs because Win32 stdio writes \r\n and shell here-doc is \n.
 actual=$(tr -d '\r' < "$OUT/actual.txt")
@@ -97,5 +100,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, annotation Proxy)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy)"
 exit 0

@@ -4567,30 +4567,94 @@ d : new PrimaryFieldAccess(a, c));
 		return new TypeDeclaration(modifiers, classDecl);
 	}
 
-	// @interface body is parsed and discarded — slice 5a only widens the
-	// grammar so source files defining annotation types can parse. Element
-	// declarations (with optional `default` values) are not yet exposed to
-	// the AST; that's a follow-up slice if/when JCGO needs to reflect over
-	// custom annotation types.
+	// Build a synthetic interface that extends java.lang.annotation.Annotation,
+	// exposing each annotation element as an abstract method. This makes the
+	// annotation type a real ClassDefinition that runtime reflection
+	// (Class.forName, Proxy.newProxyInstance) can resolve. `default` value
+	// clauses are parsed and dropped — the value-text is not retained on the
+	// synthesized member. Static-constant element declarations (`int X = 5;`)
+	// are also parsed and dropped because they don't participate in proxy
+	// dispatch.
 	private static Term AnnotationTypeDeclaration() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
 			SemError("@interface (annotation type) requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		Identifier();
+		Term annoName = Identifier();
 		Expect(28);
-		int depth = 1;
-		while (depth > 0 && t.kind != 0) {
-			if (t.kind == 28) {
-				depth++;
-			} else if (t.kind == 29) {
-				depth--;
-				if (depth == 0) break;
+		ObjVector members = new ObjVector();
+		while (t.kind != 29 && t.kind != 0) {
+			if (t.kind == 9) { Get(); continue; }
+			while (t.kind == 10) { TypeUseAnnotationGroup(); }
+			while (t.kind == 16 || t.kind == 17 || t.kind == 18
+					|| t.kind == 19 || t.kind == 20 || t.kind == 21
+					|| t.kind == 22) {
+				Get();
 			}
-			Get();
+			Term elemType;
+			if (StartOf(2)) {
+				elemType = PrimitiveType();
+			} else {
+				elemType = SimpleType();
+			}
+			if (t.kind == 43) { DimSpecSeq(); }
+			Term elemName = Identifier();
+			if (t.kind == 11) {
+				Expect(11);
+				Expect(12);
+				Term postDim = Empty.newTerm();
+				if (t.kind == 43) { postDim = DimSpecSeq(); }
+				if (t.kind == 60) {
+					Get();
+					skipToTopLevelSemi();
+				}
+				Expect(9);
+				Term method = new MethodDeclaration(elemType,
+					Empty.newTerm(), elemName, Empty.newTerm(), postDim,
+					Empty.newTerm(), new Block());
+				members.addElement(new TypeDeclaration(Empty.newTerm(),
+					method));
+			} else {
+				if (t.kind == 46) {
+					Get();
+					skipToTopLevelSemi();
+				}
+				Expect(9);
+			}
 		}
 		Expect(29);
-		return Empty.newTerm();
+		Term body = Empty.newTerm();
+		if (members.size() > 0) {
+			body = (Term) members.elementAt(members.size() - 1);
+			for (int i = members.size() - 2; i >= 0; i--) {
+				body = new Seq((Term) members.elementAt(i), body);
+			}
+		}
+		body = new Seq(body, Empty.newTerm());
+		Term annotationSuper = new ClassOrIfaceType(buildJavaLangAnnoName());
+		return new IfaceDeclaration(annoName, annotationSuper, body);
+	}
+
+	private static void skipToTopLevelSemi() {
+		int braceDepth = 0, parenDepth = 0;
+		while (t.kind != 0) {
+			if (t.kind == 9 && braceDepth == 0 && parenDepth == 0) {
+				return;
+			}
+			if (t.kind == 28) braceDepth++;
+			else if (t.kind == 29) braceDepth--;
+			else if (t.kind == 11) parenDepth++;
+			else if (t.kind == 12) parenDepth--;
+			Get();
+		}
+	}
+
+	private static Term buildJavaLangAnnoName() {
+		Term tail = new QualifiedName(new LexTerm(LexTerm.ID, "Annotation"),
+			Empty.newTerm());
+		tail = new QualifiedName(new LexTerm(LexTerm.ID, "annotation"), tail);
+		tail = new QualifiedName(new LexTerm(LexTerm.ID, "lang"), tail);
+		return new QualifiedName(new LexTerm(LexTerm.ID, "java"), tail);
 	}
 
 	private static Term ClassModifierSeq() {
