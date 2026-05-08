@@ -17,10 +17,6 @@ reflection, and custom @MyTag reflection.
 
 ### Annotation infrastructure
 
-- [ ] **`@interface` const declarations parsed-and-dropped.** A line
-  like `int X = 5;` inside an `@interface` body is consumed but the
-  constant is lost. Real annotations rarely use these; defer until a
-  consumer needs it.
 
 ### Verification gaps (claimed at codegen, not at runtime)
 
