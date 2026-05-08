@@ -27,13 +27,38 @@ reflection, and custom @MyTag reflection.
   captures all bounds (3b9e76b) and TypeVariable.getBounds() reflects
   them. Cross-bound dispatch (`a.compareTo(b)` for `<X extends Number
   & Comparable>`) still requires an explicit user-side cast
-  (`((Comparable) a).compareTo(b)`). Resolver retry was prototyped
-  (Stage 1 + 2 + 3 wiring) but the C codegen still emits
-  JCGO_CALL_VFUNC against the leftmost-bound struct -- routing the
-  call through interface dispatch needs cast injection at codegen
-  time (rewrite the receiver Term to a CastExpression on retry
-  success, with care around path-style `a.b()` vs expression-style
-  receivers). Reverted in bacd875.
+  (`((Comparable) a).compareTo(b)`).
+
+  Twice prototyped end-to-end. Both attempts:
+  1. Capture secondary bounds in the parser (already done).
+  2. Thread them through Context onto VariableDefinition.
+  3. Resolver retry on matchMethod failure: walk secondaries, find
+     the bound that has the method.
+  4. Inject a CastExpression around the receiver Term so the
+     dispatch's static type becomes the matching bound.
+
+  Stages 1-3 work. Stage 4 (the cast injection) compiles fine. But
+  the C codegen routes interface-method calls through
+  `MethodDefinition.printCall`'s "FINALF" branch when
+  `receiverClass.hasRealInstances()` is false -- which it is for any
+  interface bound. That branch emits a placeholder
+  `(<resType>)0` literal instead of the actual function call,
+  because JCGO assumes the method has no real implementation when
+  the interface itself has no instances. The runtime correctness
+  needs the VFUNC path (which would route through Integer's vtable
+  via interface dispatch), but the gating condition is wrong for
+  this case.
+
+  Real fix: rework the FINALF/VFUNC dispatch decision so interface
+  receivers go through the runtime vtable lookup, OR ensure the
+  retry path uses `actualClass = actualType0.receiverClass()` (the
+  real receiver class with real instances) instead of `resultClass
+  = altClass` (the interface bound). The latter is what the existing
+  branch1 normal flow does -- but applying it after the cast
+  injection didn't behave the same way. Needs deeper investigation
+  in MethodDefinition's call emission.
+
+  Reverted twice (bacd875, working tree at f93bff7).
 - [ ] **Method-reference real-expression receivers.** Paren-wrapped
   qualified-name receivers (`(System.out)::println`) now parse
   (03f8a74). Real expression receivers like `(getThing())::method`
