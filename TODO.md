@@ -23,17 +23,20 @@ reflection, and custom @MyTag reflection.
 
 ### Parser gaps
 
-- [ ] **Multi-bound type parameter method resolution.** Parser
-  accepts `<T extends A & B>`, captures only the first bound, and
-  erases per JLS to the first bound -- this is correct for the type
-  signature itself. The remaining gap is on the resolver: when user
-  code calls a method that lives on the *second* bound (e.g.
+- [ ] **Multi-bound method dispatch via secondary bounds.** Parser
+  now captures all bounds (3b9e76b) and TypeVariable.getBounds()
+  reflects them correctly. Erasure still uses the leftmost bound per
+  JLS 4.4. The remaining gap is on method dispatch: when user code
+  calls a method that lives on the *second* bound (e.g.
   `a.compareTo(b)` for `<X extends Number & Comparable>`), JCGO
-  reports "Undefined" because the resolver only walks the first
-  bound. Standard javac inserts an implicit cast; JCGO needs the
-  same handling. Requires teaching method-dispatch resolution about
-  secondary bounds (today they're parsed-and-discarded by
-  consumeTypeParamList's `& X` skip).
+  reports "Undefined" because MethodInvocation.processPassOneInner
+  only walks the first bound. Standard javac inserts an implicit
+  cast. JCGO would need to thread per-variable secondary-bound info
+  through VariableDefinition (the bounds string is in the parser's
+  scope but isn't carried onto the resolved variable), then retry
+  matchMethod against each secondary-bound class with a synthetic
+  cast at the receiver. ~5-6 files of plumbing; not done because
+  user-side `((Comparable) a).compareTo(b)` is a small workaround.
 - [ ] **Method-reference parenthesized-expression receivers.** Comment
   in `MethodReference.java:27` notes these are deferred.
 
