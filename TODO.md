@@ -24,9 +24,6 @@ reflection, and custom @MyTag reflection.
 
 ### Verification gaps (claimed at codegen, not at runtime)
 
-- [ ] **Pre-erasure type retention for parameters / fields.** Return
-  types verified at runtime (E2EVerify::pickFirst). Parameter and
-  field generic-signature retention is only smoke-validated.
 - [ ] **Sealed enforcement at runtime** — codegen-time gating only.
   Should add a runtime fixture exercising a banned subclass.
 
