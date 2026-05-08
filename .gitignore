@@ -23,6 +23,7 @@
 /*.tar.gz
 
 /.checkstyle
+/.claude/
 /.codepro/
 /.project
 /.settings/
