@@ -4185,11 +4185,13 @@ d : new PrimaryFieldAccess(a, c));
 		return z;
 	}
 
-	// Sealed types (Java 17). `sealed` and `permits` are contextual
-	// keywords (identifier kind), recognized only in class/interface
-	// declaration position. JCGO doesn't enforce sealed semantics; this
-	// is parse-and-discard. `non-sealed` (hyphenated) is not yet
-	// supported — would need a 3-token peek across `non` `-` `sealed`.
+	// Sealed types (Java 17). `sealed`, `non-sealed`, and `permits` are
+	// contextual keywords (identifier kind), recognized only in class /
+	// interface declaration position so they remain usable as ordinary
+	// identifiers elsewhere. `non-sealed` is hyphenated, so the lookahead
+	// peeks across the three tokens `non` `-` `sealed`; the modifier
+	// position guards mean an expression like `non - sealed` parses as
+	// arithmetic when those names are local variables.
 	private static boolean looksLikeSealed() {
 		return t.kind == 1 && "sealed".equals(t.val);
 	}

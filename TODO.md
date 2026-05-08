@@ -62,10 +62,6 @@ reflection, and custom @MyTag reflection.
 
 ### Parser gaps
 
-- [ ] **`non-sealed` not supported.** `Parser.looksLikeNonSealed` is
-  recognized but `non-sealed` (hyphenated) needs a 3-token peek across
-  `non`, `-`, `sealed` that's currently flagged as not yet implemented
-  (Parser.java:4191-4192).
 - [ ] **Multi-bound type parameters (`<T extends A & B>`).** Erasure
   uses the first bound only. JLS says erase to first non-interface
   bound; the difference matters for cross-cast scenarios. Probably a
