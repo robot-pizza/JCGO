@@ -79,10 +79,10 @@ pickFirst.getGenericParameterTypes.length = 2
   param[1] = gnu.java.lang.reflect.TypeVariableImpl(name=T)
 Holder.pass.params[0] = TV(U)
 Holder.value.genericType = TV(U)
-firstNum(1,2) = 1
-firstNum(7,3) = 3
-firstNum.typeParams.length = 1
-firstNum.X.bounds.length = 2
+smaller(1,2) = 1
+smaller(7,3) = 3
+smaller.typeParams.length = 1
+smaller.X.bounds.length = 2
   bound[0] = class java.lang.Number
   bound[1] = interface java.lang.Comparable
 via paren-wrapped method-ref

@@ -38,11 +38,11 @@ public class E2EVerify {
   }
 
   // Multi-bound type parameter (`<X extends A & B>`). JCGO erases X to
-  // the first bound (Number per JLS); methods from the second bound
-  // would need an explicit cast. The fixture proves the declaration
-  // parses and the param accepts the first-bound type.
-  public <X extends Number & Comparable> X firstNum(X a, X b) {
-    return a.intValue() < b.intValue() ? a : b;
+  // the first bound (Number per JLS); explicit cast to the second
+  // bound is needed so the C codegen dispatches through the interface
+  // vtable rather than the class one.
+  public <X extends Number & Comparable> X smaller(X a, X b) {
+    return ((Comparable) a).compareTo(b) <= 0 ? a : b;
   }
 
   interface StringSink { void accept(String s); }
@@ -122,18 +122,18 @@ public class E2EVerify {
             : ft.toString()));
 
     E2EVerify ev = new E2EVerify();
-    System.out.println("firstNum(1,2) = " + ev.firstNum(
+    System.out.println("smaller(1,2) = " + ev.smaller(
         Integer.valueOf(1), Integer.valueOf(2)));
-    System.out.println("firstNum(7,3) = " + ev.firstNum(
+    System.out.println("smaller(7,3) = " + ev.smaller(
         Integer.valueOf(7), Integer.valueOf(3)));
 
-    Method fn = E2EVerify.class.getMethod("firstNum",
+    Method fn = E2EVerify.class.getMethod("smaller",
         new Class[]{ Number.class, Number.class });
     TypeVariable[] fnVars = fn.getTypeParameters();
-    System.out.println("firstNum.typeParams.length = " + fnVars.length);
+    System.out.println("smaller.typeParams.length = " + fnVars.length);
     if (fnVars.length > 0) {
       Type[] bounds = fnVars[0].getBounds();
-      System.out.println("firstNum.X.bounds.length = " + bounds.length);
+      System.out.println("smaller.X.bounds.length = " + bounds.length);
       for (int i = 0; i < bounds.length; i++) {
         System.out.println("  bound[" + i + "] = " + bounds[i]);
       }
