@@ -92,6 +92,12 @@ MyTag.getDeclaredAnnotations.length = 2
 MyTag.isAnnotation = true
 WithDefaults.isAnnotation = true
 E2EVerify.isAnnotation = false
+Child.isAnnotationPresent(Family) = true
+Child.isAnnotationPresent(NotInherited) = false
+Parent.isAnnotationPresent(Family) = true
+multiTagged getAnnotationsByType(Tag).length = 2
+  tag[0] = alpha
+  tag[1] = beta
 receivesAnnotated paramCount = 2
   param[0].length = 1
     [0][0] = MyTag
@@ -118,5 +124,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited)"
 exit 0

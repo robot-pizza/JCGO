@@ -941,14 +941,24 @@ public final class Class /* hard-coded class name */ /* const data */
  private void internalGetAnnotations(HashSet set)
  {
   Class klass = this;
+  boolean direct = true;
   do
   {
    Annotation[] annotations = klass.getDeclaredAnnotations();
    for (int i = 0; i < annotations.length; i++)
-    set.add(annotations[i]);
+   {
+    Annotation a = annotations[i];
+    // JLS 9.6.4.3: only @Inherited annotations propagate from a
+    // superclass to its subclasses. Direct annotations on `this`
+    // are always included; for ancestors, gate on the
+    // @Inherited meta-annotation.
+    if (direct || isInheritableAnnotation(a.annotationType()))
+     set.add(a);
+   }
    Class[] ifaces = klass.getInterfaces();
    for (int i = 0; i < ifaces.length; i++)
     ifaces[i].internalGetAnnotations(set);
+   direct = false;
   } while ((klass = klass.getSuperclass()) != null);
  }
 

@@ -47,6 +47,10 @@ public class E2EVerify {
   public void receivesAnnotated(@MyTag String first,
                                  @WithDefaults(level = 7) String second) {}
 
+  @Tag("alpha")
+  @Tag("beta")
+  public void multiTagged() {}
+
   public static void main(String[] args) throws Exception {
     Producer p = new StringProducer();
     Object out = p.produce();
@@ -116,6 +120,21 @@ public class E2EVerify {
     System.out.println("E2EVerify.isAnnotation = "
         + E2EVerify.class.isAnnotation());
 
+    System.out.println("Child.isAnnotationPresent(Family) = "
+        + Child.class.isAnnotationPresent(Family.class));
+    System.out.println("Child.isAnnotationPresent(NotInherited) = "
+        + Child.class.isAnnotationPresent(NotInherited.class));
+    System.out.println("Parent.isAnnotationPresent(Family) = "
+        + Parent.class.isAnnotationPresent(Family.class));
+
+    Method mt = E2EVerify.class.getMethod("multiTagged", new Class[0]);
+    Annotation[] tagsByType = mt.getAnnotationsByType(Tag.class);
+    System.out.println("multiTagged getAnnotationsByType(Tag).length = "
+        + tagsByType.length);
+    for (int i = 0; i < tagsByType.length; i++) {
+      System.out.println("  tag[" + i + "] = " + ((Tag) tagsByType[i]).value());
+    }
+
     Method ra = E2EVerify.class.getMethod("receivesAnnotated",
         new Class[]{ String.class, String.class });
     Annotation[][] params = ra.getParameterAnnotations();
@@ -137,6 +156,30 @@ public class E2EVerify {
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 @interface MyTag {}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@java.lang.annotation.Repeatable(Tags.class)
+@interface Tag { String value(); }
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@interface Tags { Tag[] value(); }
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@java.lang.annotation.Inherited
+@interface Family {}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@interface NotInherited {}
+
+@Family
+@NotInherited
+class Parent {}
+
+class Child extends Parent {}
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
