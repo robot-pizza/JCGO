@@ -17,11 +17,6 @@ reflection, and custom @MyTag reflection.
 
 ### Annotation infrastructure
 
-- [ ] **`Method.getParameterAnnotations()` / `Constructor.getParameterAnnotations()` return empty `Annotation[0][]`.**
-  The JCGO-extension `jcgoGetParameterAnnotationTypeNames()` works
-  (name-only). Standard API requires building an `Annotation[][]` via
-  the Proxy machinery, indexed by parameter — same pattern as
-  `getDeclaredAnnotations` but per slot.
 - [ ] **`@interface`-on-`@interface` meta-annotations dropped.** When
   the user writes `@Documented @Retention(RUNTIME) @Target(METHOD)
   @interface MyTag {}`, our synthetic interface AST drops those
