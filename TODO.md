@@ -24,19 +24,16 @@ reflection, and custom @MyTag reflection.
 ### Parser gaps
 
 - [ ] **Multi-bound method dispatch via secondary bounds.** Parser
-  now captures all bounds (3b9e76b) and TypeVariable.getBounds()
-  reflects them correctly. Erasure still uses the leftmost bound per
-  JLS 4.4. The remaining gap is on method dispatch: when user code
-  calls a method that lives on the *second* bound (e.g.
-  `a.compareTo(b)` for `<X extends Number & Comparable>`), JCGO
-  reports "Undefined" because MethodInvocation.processPassOneInner
-  only walks the first bound. Standard javac inserts an implicit
-  cast. JCGO would need to thread per-variable secondary-bound info
-  through VariableDefinition (the bounds string is in the parser's
-  scope but isn't carried onto the resolved variable), then retry
-  matchMethod against each secondary-bound class with a synthetic
-  cast at the receiver. ~5-6 files of plumbing; not done because
-  user-side `((Comparable) a).compareTo(b)` is a small workaround.
+  captures all bounds (3b9e76b) and TypeVariable.getBounds() reflects
+  them. Cross-bound dispatch (`a.compareTo(b)` for `<X extends Number
+  & Comparable>`) still requires an explicit user-side cast
+  (`((Comparable) a).compareTo(b)`). Resolver retry was prototyped
+  (Stage 1 + 2 + 3 wiring) but the C codegen still emits
+  JCGO_CALL_VFUNC against the leftmost-bound struct -- routing the
+  call through interface dispatch needs cast injection at codegen
+  time (rewrite the receiver Term to a CastExpression on retry
+  success, with care around path-style `a.b()` vs expression-style
+  receivers). Reverted in bacd875.
 - [ ] **Method-reference real-expression receivers.** Paren-wrapped
   qualified-name receivers (`(System.out)::println`) now parse
   (03f8a74). Real expression receivers like `(getThing())::method`
