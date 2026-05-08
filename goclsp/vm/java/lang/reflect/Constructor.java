@@ -324,9 +324,31 @@ public final class Constructor extends AccessibleObject
           signature)).getGenericParameterTypes();
  }
 
+ // TODO #3: parallel to Method.getParameterAnnotations.
  public Annotation[][] getParameterAnnotations()
  {
-  return new Annotation[0][];
+  String[][][] all = VMMethod.getMethodsParamAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length) return new Annotation[0][];
+  String[][] mineNames = all[slot];
+  if (mineNames == null) return new Annotation[0][];
+  String[][][] allArgs = VMMethod.getMethodsParamAnnoArgs0(getDeclaringClass());
+  String[][] mineArgs = allArgs != null && slot < allArgs.length
+          ? allArgs[slot] : null;
+  Annotation[][] r = new Annotation[mineNames.length][];
+  for (int i = 0; i < mineNames.length; i++)
+  {
+   String[] paramNames = mineNames[i];
+   if (paramNames == null)
+   {
+    r[i] = new Annotation[0];
+    continue;
+   }
+   String[] paramArgs = mineArgs != null && i < mineArgs.length
+            ? mineArgs[i] : null;
+   r[i] = VMReflectAnnotations.build(paramNames, paramArgs,
+            getDeclaringClass());
+  }
+  return r;
  }
 
  static void addTypeParameters(StringBuilder sb, TypeVariable[] typeArgs)

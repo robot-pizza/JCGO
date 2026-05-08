@@ -817,6 +817,7 @@ struct jcgo_reflect_s
  jObjectArr methodsAnnos;     /* slice 49: per-method String[] of declaration-annotation type names; NULL when no method in the class is annotated */
  jObjectArr methodsAnnoArgs;  /* slice 86: per-method String[] parallel to methodsAnnos with raw annotation arg-text */
  jObjectArr methodsParamAnnos; /* slice 49 ext: per-method String[][] of parameter-annotation type names; NULL when no method in the class has parameter annotations */
+ jObjectArr methodsParamAnnoArgs; /* TODO #3: per-method String[][] parallel to methodsParamAnnos with raw arg-text per (parameter, annotation) */
  jObjectArr methodsDefault;   /* TODO #1: per-method String of raw `default V` text for annotation members; NULL when no method has a default */
  CONST struct jcgo_methodentry_s *methodsEntry;
 };

@@ -180,6 +180,12 @@ final class MethodDefinition {
     // method/constructor is annotated.
     private ObjVector parameterAnnotationLists;
 
+    // TODO #3: parallel arg-text per-parameter list (raw paren content
+    // of each annotation on each parameter). Same shape as
+    // parameterAnnotationLists. Null overall when no parameter has
+    // annotation args (or when no parameter is annotated at all).
+    private ObjVector parameterAnnotationArgsLists;
+
     // TODO #1: raw text of the `default V` clause for an annotation
     // member declaration (e.g. "5" for `int level() default 5;` or
     // "\"ok\"" for `String value() default "ok";`). Null when the
@@ -749,6 +755,14 @@ final class MethodDefinition {
 
     ObjVector getParameterAnnotationLists() {
         return parameterAnnotationLists;
+    }
+
+    void setParameterAnnotationArgsLists(ObjVector lists) {
+        this.parameterAnnotationArgsLists = lists;
+    }
+
+    ObjVector getParameterAnnotationArgsLists() {
+        return parameterAnnotationArgsLists;
     }
 
     void setAnnotationDefaultText(String text) {

@@ -373,8 +373,33 @@ public final class Method extends AccessibleObject
           getDeclaringClass());
  }
 
+ // TODO #3: build Annotation[][] for the parameters of this method.
+ // Outer dim: parameter position. Each Annotation[] is built via the
+ // Proxy machinery from the per-(parameter, annotation) name and
+ // arg-text tables that codegen emitted from the parser side channel.
  public Annotation[][] getParameterAnnotations()
  {
-  return new Annotation[0][];
+  String[][][] all = VMMethod.getMethodsParamAnnos0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length) return new Annotation[0][];
+  String[][] mineNames = all[slot];
+  if (mineNames == null) return new Annotation[0][];
+  String[][][] allArgs = VMMethod.getMethodsParamAnnoArgs0(getDeclaringClass());
+  String[][] mineArgs = allArgs != null && slot < allArgs.length
+          ? allArgs[slot] : null;
+  Annotation[][] r = new Annotation[mineNames.length][];
+  for (int i = 0; i < mineNames.length; i++)
+  {
+   String[] paramNames = mineNames[i];
+   if (paramNames == null)
+   {
+    r[i] = new Annotation[0];
+    continue;
+   }
+   String[] paramArgs = mineArgs != null && i < mineArgs.length
+            ? mineArgs[i] : null;
+   r[i] = VMReflectAnnotations.build(paramNames, paramArgs,
+            getDeclaringClass());
+  }
+  return r;
  }
 }

@@ -165,14 +165,31 @@ public class Parser {
 	private static final ObjHashtable paramAnnotationsByDecl =
 			new ObjHashtable();
 
+	// TODO #3: parallel to paramAnnotationsByDecl; stores per-param
+	// annotation arg-text strings (paren contents) so runtime
+	// Method.getParameterAnnotations can build full proxies, not just
+	// markers.
+	private static final ObjHashtable paramAnnotationArgsByDecl =
+			new ObjHashtable();
+
 	static ObjVector getParamAnnotations(Term param) {
 		return param == null ? null
 				: (ObjVector) paramAnnotationsByDecl.get(param);
 	}
 
+	static ObjVector getParamAnnotationArgs(Term param) {
+		return param == null ? null
+				: (ObjVector) paramAnnotationArgsByDecl.get(param);
+	}
+
 	private static void recordParamAnnotations(Term param, ObjVector names) {
 		if (param != null && names != null && names.size() > 0) {
 			paramAnnotationsByDecl.put(param, names);
+			ObjVector args = pendingAnnotationArgsSinceTake;
+			pendingAnnotationArgsSinceTake = null;
+			if (args != null && args.size() == names.size()) {
+				paramAnnotationArgsByDecl.put(param, args);
+			}
 		}
 	}
 

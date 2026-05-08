@@ -5281,6 +5281,72 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
         }
         outputContext.cPrint(",\010");
+        // TODO #3: methodsParamAnnoArgs — per-method String[][]
+        // parallel to methodsParamAnnos, holding the raw arg-text
+        // string for each (parameter, annotation) slot. NULL outer
+        // when no parameter has annotation args.
+        if (reflectedMethods != null && reflectedMethods.size() > 0) {
+            StringBuffer paBuf = new StringBuffer();
+            int paCount = 0;
+            boolean anyPa = false;
+            Enumeration en = methodDictionary().keys();
+            while (en.hasMoreElements()) {
+                MethodDefinition md = (MethodDefinition) reflectedMethods
+                        .get((String) en.nextElement());
+                if (md != null) {
+                    ObjVector lists = md.getParameterAnnotationArgsLists();
+                    if (lists != null && lists.size() > 0) {
+                        anyPa = true;
+                        StringBuffer perParams = new StringBuffer();
+                        for (int i = 0; i < lists.size(); i++) {
+                            ObjVector p = (ObjVector) lists.elementAt(i);
+                            if (p != null && p.size() > 0) {
+                                StringBuffer perOne = new StringBuffer();
+                                for (int j = 0; j < p.size(); j++) {
+                                    String at = (String) p.elementAt(j);
+                                    perOne.append('(')
+                                            .append(Type.cName[Type.CLASSINTERFACE])
+                                            .append(')');
+                                    perOne.append(Main.dict.classNameStringOutput(
+                                            at != null ? at : "", this, true));
+                                    perOne.append(", ");
+                                }
+                                String inner = addImmutableArray(
+                                        Main.dict.get(Names.JAVA_LANG_STRING),
+                                        perOne.toString(), p.size());
+                                perParams.append('(')
+                                        .append(Type.cName[Type.CLASSINTERFACE])
+                                        .append(')').append(inner);
+                            } else {
+                                perParams.append(LexTerm.NULL_STR);
+                            }
+                            perParams.append(", ");
+                        }
+                        String middle = addImmutableArray(
+                                Main.dict.get(Names.JAVA_LANG_STRING)
+                                        .asExprType(1),
+                                perParams.toString(), lists.size());
+                        paBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')').append(middle);
+                    } else {
+                        paBuf.append(LexTerm.NULL_STR);
+                    }
+                    paBuf.append(", ");
+                    paCount++;
+                }
+            }
+            if (anyPa) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING).asExprType(2),
+                        paBuf.toString(), paCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
         // TODO #1: methodsDefault — per-method String holding the raw
         // `default V` text from an @interface element declaration.
         // NULL when no method in this class has a default. Runtime

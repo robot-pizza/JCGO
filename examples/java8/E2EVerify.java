@@ -44,6 +44,9 @@ public class E2EVerify {
   @WithDefaults
   public void allDefaults() {}
 
+  public void receivesAnnotated(@MyTag String first,
+                                 @WithDefaults(level = 7) String second) {}
+
   public static void main(String[] args) throws Exception {
     Producer p = new StringProducer();
     Object out = p.produce();
@@ -107,6 +110,22 @@ public class E2EVerify {
         + WithDefaults.class.isAnnotation());
     System.out.println("E2EVerify.isAnnotation = "
         + E2EVerify.class.isAnnotation());
+
+    Method ra = E2EVerify.class.getMethod("receivesAnnotated",
+        new Class[]{ String.class, String.class });
+    Annotation[][] params = ra.getParameterAnnotations();
+    System.out.println("receivesAnnotated paramCount = " + params.length);
+    for (int i = 0; i < params.length; i++) {
+      System.out.println("  param[" + i + "].length = " + params[i].length);
+      for (int j = 0; j < params[i].length; j++) {
+        System.out.println("    [" + i + "][" + j + "] = "
+            + params[i][j].annotationType().getName());
+        if (params[i][j] instanceof WithDefaults) {
+          WithDefaults wd = (WithDefaults) params[i][j];
+          System.out.println("      value=" + wd.value() + " level=" + wd.level());
+        }
+      }
+    }
   }
 }
 

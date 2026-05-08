@@ -162,6 +162,11 @@ final class MethodDeclaration extends LexNode {
         if (paramAnnos != null) {
             md.setParameterAnnotationLists(paramAnnos);
         }
+        // TODO #3: parallel walk for arg-text strings.
+        ObjVector paramAnnoArgs = collectParamAnnotationArgs(terms[3]);
+        if (paramAnnoArgs != null) {
+            md.setParameterAnnotationArgsLists(paramAnnoArgs);
+        }
         // Slice 50 (pre-erasure retention): if the return type was a
         // single-id type-param erased by slice 45, thread the
         // original name through so the JLS signature can render it
@@ -214,6 +219,30 @@ final class MethodDeclaration extends LexNode {
             ObjVector annos = Parser.getParamAnnotations(t);
             out.addElement(annos);
             return annos != null && annos.size() > 0;
+        }
+        return false;
+    }
+
+    private static ObjVector collectParamAnnotationArgs(Term paramList) {
+        if (paramList == null || !paramList.notEmpty()) return null;
+        ObjVector out = new ObjVector();
+        boolean anyArgs = collectParamAnnotationArgsInto(paramList, out);
+        return anyArgs ? out : null;
+    }
+
+    private static boolean collectParamAnnotationArgsInto(Term t,
+            ObjVector out) {
+        if (!t.notEmpty()) return false;
+        if (t instanceof FormalParamList) {
+            FormalParamList list = (FormalParamList) t;
+            boolean a = collectParamAnnotationArgsInto(list.terms[0], out);
+            boolean b = collectParamAnnotationArgsInto(list.terms[1], out);
+            return a || b;
+        }
+        if (t instanceof FormalParameter) {
+            ObjVector args = Parser.getParamAnnotationArgs(t);
+            out.addElement(args);
+            return args != null && args.size() > 0;
         }
         return false;
     }
