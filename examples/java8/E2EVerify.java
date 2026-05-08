@@ -38,6 +38,12 @@ public class E2EVerify {
   @MyTag
   public void taggedMethod() {}
 
+  @WithDefaults(level = 99)
+  public void partialDefaults() {}
+
+  @WithDefaults
+  public void allDefaults() {}
+
   public static void main(String[] args) throws Exception {
     Producer p = new StringProducer();
     Object out = p.produce();
@@ -78,9 +84,33 @@ public class E2EVerify {
       System.out.println("taggedMethod ann[0].annotationType = "
           + tagAnns[0].annotationType().getName());
     }
+
+    Method partial = E2EVerify.class.getMethod("partialDefaults", new Class[0]);
+    WithDefaults pd = (WithDefaults) partial.getAnnotation(WithDefaults.class);
+    System.out.println("partialDefaults @WithDefaults.value = " + pd.value());
+    System.out.println("partialDefaults @WithDefaults.level = " + pd.level());
+
+    Method all = E2EVerify.class.getMethod("allDefaults", new Class[0]);
+    WithDefaults ad = (WithDefaults) all.getAnnotation(WithDefaults.class);
+    System.out.println("allDefaults @WithDefaults.value = " + ad.value());
+    System.out.println("allDefaults @WithDefaults.level = " + ad.level());
+
+    Method valueMember = WithDefaults.class.getMethod("value", new Class[0]);
+    System.out.println("WithDefaults.value default = "
+        + valueMember.getDefaultValue());
+    Method levelMember = WithDefaults.class.getMethod("level", new Class[0]);
+    System.out.println("WithDefaults.level default = "
+        + levelMember.getDefaultValue());
   }
 }
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 @interface MyTag {}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@interface WithDefaults {
+  String value() default "ok";
+  int level() default 5;
+}

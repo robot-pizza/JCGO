@@ -171,7 +171,16 @@ public class AccessibleObject
   /* FIXME[GENERICS]: <T extends Annotation> T getAnnotation(Class <T>) */
   public Annotation getAnnotation(Class annotationClass)
   {
-    throw new AssertionError("Subclass must override this method");
+    if (annotationClass == null) return null;
+    Annotation[] anns = getAnnotations();
+    if (anns == null) return null;
+    for (int i = 0; i < anns.length; i++)
+    {
+      if (anns[i] != null
+          && anns[i].annotationType() == annotationClass)
+        return anns[i];
+    }
+    return null;
   }
 
   public Annotation[] getAnnotations()

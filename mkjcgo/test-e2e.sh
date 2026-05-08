@@ -79,7 +79,13 @@ oldMethod getDeclaredAnnotations.length = 1
 oldMethod ann[0].annotationType = java.lang.Deprecated
 taggedMethod isAnnotationPresent(MyTag) = true
 taggedMethod getDeclaredAnnotations.length = 1
-taggedMethod ann[0].annotationType = MyTag'
+taggedMethod ann[0].annotationType = MyTag
+partialDefaults @WithDefaults.value = ok
+partialDefaults @WithDefaults.level = 99
+allDefaults @WithDefaults.value = ok
+allDefaults @WithDefaults.level = 5
+WithDefaults.value default = ok
+WithDefaults.level default = 5'
 
 # Strip CRs because Win32 stdio writes \r\n and shell here-doc is \n.
 actual=$(tr -d '\r' < "$OUT/actual.txt")
@@ -100,5 +106,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults)"
 exit 0

@@ -146,6 +146,15 @@ final class MethodDeclaration extends LexNode {
         if (annoArgs != null) {
             md.setAnnotationArgs(annoArgs);
         }
+        // TODO #1: when this MethodDeclaration was synthesized for an
+        // @interface element with `default V`, pick up the captured V
+        // text and thread it onto the MethodDefinition. The string is
+        // emitted into the methodsDefault[] reflection table for the
+        // annotation type and parsed back into a typed value at runtime.
+        String defText = Parser.getAnnotationDefault(this);
+        if (defText != null) {
+            md.setAnnotationDefaultText(defText);
+        }
         // Slice 49 ext: collect per-parameter annotation lists by
         // walking the FormalParamList AST. Each entry is either an
         // ObjVector<String> of annotation type names or null.

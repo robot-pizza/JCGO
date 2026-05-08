@@ -149,6 +149,7 @@ public final class VMReflectAnnotations
    if (annoClass == null)
     continue;
    Map values = parseArgText(argText, annoClass, loader, declaring);
+   fillInDefaults(values, annoClass);
    try
    {
     tmp[count++] = (Annotation) Proxy.newProxyInstance(loader,
@@ -165,6 +166,31 @@ public final class VMReflectAnnotations
   Annotation[] r = new Annotation[count];
   System.arraycopy(tmp, 0, r, 0, count);
   return r;
+ }
+
+ // TODO #1: for any annotation member not present in `values`, look
+ // up the member's declared default (via Method.getDefaultValue) and
+ // populate the map. Without this, AnnotationInvocationHandler raises
+ // IncompleteAnnotationException for unspecified members that have a
+ // default declared on the annotation type.
+ private static void fillInDefaults(Map values, Class annoClass)
+ {
+  if (annoClass == null) return;
+  try
+  {
+   Method[] methods = annoClass.getDeclaredMethods();
+   for (int i = 0; i < methods.length; i++)
+   {
+    String key = methods[i].getName();
+    if (values.containsKey(key)) continue;
+    Object def = methods[i].getDefaultValue();
+    if (def != null) values.put(key, def);
+   }
+  }
+  catch (Throwable t)
+  {
+   // proceed without defaults
+  }
  }
 
  // Slice 86: parse the raw arg-text captured by the parser into a
@@ -239,6 +265,17 @@ public final class VMReflectAnnotations
   if (annoClass != null && !m.isEmpty())
    coerceArrayMembers(annoClass, m);
   return m;
+ }
+
+ // TODO #1 entry point for Method.getDefaultValue. Same parser as the
+ // per-call arg-text path; the input is the raw text JCGO captured at
+ // parse time for an annotation member's `default V` clause.
+ public static Object parseDefaultValue(String text, Class targetType,
+   Class declaring)
+ {
+  ClassLoader loader = declaring != null
+          ? declaring.getClassLoader() : null;
+  return parseValueWithType(text, targetType, declaring, loader);
  }
 
  private static Object parseValueWithType(String s, Class targetType,

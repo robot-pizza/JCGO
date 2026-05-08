@@ -360,9 +360,17 @@ public final class Method extends AccessibleObject
   return (new MethodSignatureParser(this, signature)).getGenericReturnType();
  }
 
+ // TODO #1: when the declaring class is an @interface, the parser
+ // captured the raw `default V` text into a per-method String[]; here
+ // we look it up and parse it against this method's return type.
  public Object getDefaultValue()
  {
-  return null;
+  String[] all = VMMethod.getMethodsDefault0(getDeclaringClass());
+  if (all == null || slot < 0 || slot >= all.length) return null;
+  String text = all[slot];
+  if (text == null || text.length() == 0) return null;
+  return VMReflectAnnotations.parseDefaultValue(text, getReturnType(),
+          getDeclaringClass());
  }
 
  public Annotation[][] getParameterAnnotations()

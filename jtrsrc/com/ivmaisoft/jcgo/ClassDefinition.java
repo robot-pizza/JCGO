@@ -5273,6 +5273,45 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
         }
         outputContext.cPrint(",\010");
+        // TODO #1: methodsDefault — per-method String holding the raw
+        // `default V` text from an @interface element declaration.
+        // NULL when no method in this class has a default. Runtime
+        // VMReflectAnnotations parses the text on demand.
+        if (reflectedMethods != null && reflectedMethods.size() > 0) {
+            StringBuffer dvBuf = new StringBuffer();
+            int dvCount = 0;
+            boolean anyDv = false;
+            Enumeration en = methodDictionary().keys();
+            while (en.hasMoreElements()) {
+                MethodDefinition md = (MethodDefinition) reflectedMethods
+                        .get((String) en.nextElement());
+                if (md != null) {
+                    String d = md.getAnnotationDefaultText();
+                    if (d != null && d.length() > 0) {
+                        anyDv = true;
+                        dvBuf.append('(')
+                                .append(Type.cName[Type.CLASSINTERFACE])
+                                .append(')');
+                        dvBuf.append(Main.dict.classNameStringOutput(d, this,
+                                true));
+                    } else {
+                        dvBuf.append(LexTerm.NULL_STR);
+                    }
+                    dvBuf.append(", ");
+                    dvCount++;
+                }
+            }
+            if (anyDv) {
+                outputContext.cPrint(addImmutableArray(
+                        Main.dict.get(Names.JAVA_LANG_STRING),
+                        dvBuf.toString(), dvCount));
+            } else {
+                outputContext.cPrint(LexTerm.NULL_STR);
+            }
+        } else {
+            outputContext.cPrint(LexTerm.NULL_STR);
+        }
+        outputContext.cPrint(",\010");
         if (reflectedMethods != null && reflectedMethods.size() > 0) {
             outputContext.cPrint(cname);
             outputContext.cPrint("__abstract");

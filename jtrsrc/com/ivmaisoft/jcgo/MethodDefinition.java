@@ -180,6 +180,14 @@ final class MethodDefinition {
     // method/constructor is annotated.
     private ObjVector parameterAnnotationLists;
 
+    // TODO #1: raw text of the `default V` clause for an annotation
+    // member declaration (e.g. "5" for `int level() default 5;` or
+    // "\"ok\"" for `String value() default "ok";`). Null when the
+    // method isn't an annotation member or has no default. Emitted
+    // into the methodsDefault[] reflection table; runtime
+    // VMReflectAnnotations.parseValueWithType decodes it on demand.
+    private String annotationDefaultText;
+
     MethodDefinition(ClassDefinition ourClass) {
         this.ourClass = ourClass;
         id = "<clinit>";
@@ -741,6 +749,14 @@ final class MethodDefinition {
 
     ObjVector getParameterAnnotationLists() {
         return parameterAnnotationLists;
+    }
+
+    void setAnnotationDefaultText(String text) {
+        this.annotationDefaultText = text;
+    }
+
+    String getAnnotationDefaultText() {
+        return annotationDefaultText;
     }
 
     // Slice 50: build a JLS method-signature string per JVMS 4.7.9.1

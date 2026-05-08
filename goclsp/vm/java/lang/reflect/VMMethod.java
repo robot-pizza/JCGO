@@ -943,6 +943,12 @@ final class VMMethod /* hard-coded class name */
  static native String[][][] getMethodsParamAnnos0(
    Class klass); /* JVM-core */ /* const data of const data */
 
+ // TODO #1: per-class array indexed by method slot, each entry is
+ // the raw `default V` text from an @interface element declaration,
+ // or null when that method has no default.
+ static native String[] getMethodsDefault0(
+   Class klass); /* JVM-core */ /* const data */
+
  private static native Class[][] getMethodsTypes0(
    Class klass); /* JVM-core */ /* const data of const data */
 

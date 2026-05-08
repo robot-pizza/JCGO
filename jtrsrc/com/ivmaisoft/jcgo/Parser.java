@@ -4572,11 +4572,13 @@ d : new PrimaryFieldAccess(a, c));
 	// Build a synthetic interface that extends java.lang.annotation.Annotation,
 	// exposing each annotation element as an abstract method. This makes the
 	// annotation type a real ClassDefinition that runtime reflection
-	// (Class.forName, Proxy.newProxyInstance) can resolve. `default` value
-	// clauses are parsed and dropped — the value-text is not retained on the
-	// synthesized member. Static-constant element declarations (`int X = 5;`)
-	// are also parsed and dropped because they don't participate in proxy
-	// dispatch.
+	// (Class.forName, Proxy.newProxyInstance) can resolve. `default V` clauses
+	// have V captured as raw arg-text and side-channeled to the synthesized
+	// MethodDeclaration so codegen can emit it into a methodsDefault[]
+	// reflection table; runtime VMReflectAnnotations parses it back into a
+	// typed value when an annotation member is queried without an explicit
+	// override. Static-constant element declarations (`int X = 5;`) are still
+	// parsed and dropped because they don't participate in proxy dispatch.
 	private static Term AnnotationTypeDeclaration() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
 			SemError("@interface (annotation type) requires -source 5 or higher (got "
@@ -4606,14 +4608,18 @@ d : new PrimaryFieldAccess(a, c));
 				Expect(12);
 				Term postDim = Empty.newTerm();
 				if (t.kind == 43) { postDim = DimSpecSeq(); }
+				String defaultText = null;
 				if (t.kind == 60) {
 					Get();
-					skipToTopLevelSemi();
+					defaultText = captureToTopLevelSemi();
 				}
 				Expect(9);
-				Term method = new MethodDeclaration(elemType,
+				MethodDeclaration method = new MethodDeclaration(elemType,
 					Empty.newTerm(), elemName, Empty.newTerm(), postDim,
 					Empty.newTerm(), new Block());
+				if (defaultText != null && defaultText.length() > 0) {
+					annotationDefaultsByDecl.put(method, defaultText);
+				}
 				members.addElement(new TypeDeclaration(Empty.newTerm(),
 					method));
 			} else {
@@ -4637,6 +4643,17 @@ d : new PrimaryFieldAccess(a, c));
 		return new IfaceDeclaration(annoName, annotationSuper, body);
 	}
 
+	// Side channel: synthesized MethodDeclaration for an annotation
+	// element -> the raw `default V` text. Read by MethodDeclaration in
+	// processPass1 and threaded onto MethodDefinition for codegen.
+	private static final ObjHashtable annotationDefaultsByDecl =
+		new ObjHashtable();
+
+	static String getAnnotationDefault(Object decl) {
+		return decl == null ? null
+			: (String) annotationDefaultsByDecl.get(decl);
+	}
+
 	private static void skipToTopLevelSemi() {
 		int braceDepth = 0, parenDepth = 0;
 		while (t.kind != 0) {
@@ -4649,6 +4666,28 @@ d : new PrimaryFieldAccess(a, c));
 			else if (t.kind == 12) parenDepth--;
 			Get();
 		}
+	}
+
+	private static String captureToTopLevelSemi() {
+		StringBuffer raw = new StringBuffer();
+		int braceDepth = 0, parenDepth = 0;
+		while (t.kind != 0) {
+			if (t.kind == 9 && braceDepth == 0 && parenDepth == 0) {
+				break;
+			}
+			if (t.kind == 28) braceDepth++;
+			else if (t.kind == 29) braceDepth--;
+			else if (t.kind == 11) parenDepth++;
+			else if (t.kind == 12) parenDepth--;
+			if (raw.length() > 0
+					&& isWordChar(raw.charAt(raw.length() - 1))
+					&& isWordCharStart(t.val)) {
+				raw.append(' ');
+			}
+			raw.append(t.val);
+			Get();
+		}
+		return raw.toString().trim();
 	}
 
 	private static Term buildJavaLangAnnoName() {
