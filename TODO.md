@@ -17,12 +17,6 @@ reflection, and custom @MyTag reflection.
 
 ### Annotation infrastructure
 
-- [ ] **`@interface`-on-`@interface` meta-annotations dropped.** When
-  the user writes `@Documented @Retention(RUNTIME) @Target(METHOD)
-  @interface MyTag {}`, our synthetic interface AST drops those
-  decorators. They should propagate to the synthesized class so
-  `MyTag.class.getDeclaredAnnotations()` returns Documented/Retention/
-  Target.
 - [ ] **`@interface` const declarations parsed-and-dropped.** A line
   like `int X = 5;` inside an `@interface` body is consumed but the
   constant is lost. Real annotations rarely use these; defer until a
