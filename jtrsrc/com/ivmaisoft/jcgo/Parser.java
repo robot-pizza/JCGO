@@ -4647,11 +4647,25 @@ d : new PrimaryFieldAccess(a, c));
 				members.addElement(new TypeDeclaration(Empty.newTerm(),
 					method));
 			} else {
+				// Static-constant element declaration. Per JLS 9.6.1,
+				// these are implicitly public static final. Synthesize
+				// a FieldDeclaration so the constant is reachable via
+				// reflection (Class.getField, Field.get) from the
+				// annotation type.
+				Term init = Empty.newTerm();
 				if (t.kind == 46) {
 					Get();
-					skipToTopLevelSemi();
+					init = VariableInitializer();
 				}
 				Expect(9);
+				Term varDeclr = new VariableDeclarator(
+					new VariableIdentifier(elemName), Empty.newTerm(), init);
+				Term field = new FieldDeclaration(elemType, Empty.newTerm(),
+					varDeclr);
+				Term constMods = new Seq(new AccModifier(AccModifier.PUBLIC),
+					new Seq(new AccModifier(AccModifier.STATIC),
+						new AccModifier(AccModifier.FINAL)));
+				members.addElement(new TypeDeclaration(constMods, field));
 			}
 		}
 		Expect(29);

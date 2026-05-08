@@ -81,6 +81,9 @@ Holder.pass.params[0] = TV(U)
 Holder.value.genericType = TV(U)
 firstNum(1,2) = 1
 firstNum(7,3) = 3
+WithConsts.LIMIT = 42
+WithConsts.LABEL = anno-const
+WithConsts.LIMIT (via reflection) = 42
 oldMethod isAnnotationPresent(Deprecated) = true
 oldMethod getDeclaredAnnotations.length = 1
 oldMethod ann[0].annotationType = java.lang.Deprecated
@@ -134,5 +137,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime, @interface consts)"
 exit 0

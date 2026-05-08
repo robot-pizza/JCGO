@@ -118,6 +118,13 @@ public class E2EVerify {
     System.out.println("firstNum(7,3) = " + ev.firstNum(
         Integer.valueOf(7), Integer.valueOf(3)));
 
+    System.out.println("WithConsts.LIMIT = " + WithConsts.LIMIT);
+    System.out.println("WithConsts.LABEL = " + WithConsts.LABEL);
+    java.lang.reflect.Field limitField =
+        WithConsts.class.getField("LIMIT");
+    System.out.println("WithConsts.LIMIT (via reflection) = "
+        + limitField.get(null));
+
     Method old = E2EVerify.class.getMethod("oldMethod", new Class[0]);
     System.out.println("oldMethod isAnnotationPresent(Deprecated) = "
         + old.isAnnotationPresent(Deprecated.class));
@@ -241,4 +248,12 @@ class Child extends Parent {}
 @interface WithDefaults {
   String value() default "ok";
   int level() default 5;
+}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@interface WithConsts {
+  int LIMIT = 42;
+  String LABEL = "anno-const";
+  String name();
 }
