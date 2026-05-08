@@ -17,13 +17,6 @@ reflection, and custom @MyTag reflection.
 
 ### Annotation infrastructure
 
-- [ ] **Synthesized @interface lacks ANNOTATION modifier bit.** Real
-  ClassDefinitions are produced (Gap #1, 88a95bc) but
-  `Class.isAnnotation()` returns false because the modifier bit isn't
-  set. `VMReflectAnnotations.build` was relaxed to no longer check
-  `isAnnotation()` — fine for our path, but third-party code that
-  consults `isAnnotation()` won't get the right answer. Set the bit
-  during `definePass0` when the declaration originated from `@interface`.
 - [ ] **`Method.getParameterAnnotations()` / `Constructor.getParameterAnnotations()` return empty `Annotation[0][]`.**
   The JCGO-extension `jcgoGetParameterAnnotationTypeNames()` works
   (name-only). Standard API requires building an `Annotation[][]` via
