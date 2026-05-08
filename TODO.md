@@ -37,8 +37,14 @@ reflection, and custom @MyTag reflection.
   matchMethod against each secondary-bound class with a synthetic
   cast at the receiver. ~5-6 files of plumbing; not done because
   user-side `((Comparable) a).compareTo(b)` is a small workaround.
-- [ ] **Method-reference parenthesized-expression receivers.** Comment
-  in `MethodReference.java:27` notes these are deferred.
+- [ ] **Method-reference real-expression receivers.** Paren-wrapped
+  qualified-name receivers (`(System.out)::println`) now parse
+  (03f8a74). Real expression receivers like `(getThing())::method`
+  or `((Cast) x)::method` still don't, because the receiver value
+  has to be evaluated once at lambda-creation time and captured in
+  a synthetic field on the lifted anonymous class. The existing
+  user workaround is to write a regular lambda
+  (`() -> getThing().method()`).
 
 ### Runtime / native — Android parity
 
