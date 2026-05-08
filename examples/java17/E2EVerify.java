@@ -45,6 +45,15 @@ public class E2EVerify {
     return a.intValue() < b.intValue() ? a : b;
   }
 
+  interface StringSink { void accept(String s); }
+
+  static StringSink mkSink() {
+    // Paren-wrapped qualified-name receiver. The redundant parens
+    // around `System.out` would normally fail the method-ref parser;
+    // the partial #11 fix strips them at parse time.
+    return (System.out)::println;
+  }
+
   @Deprecated
   public void oldMethod() {}
 
@@ -129,6 +138,9 @@ public class E2EVerify {
         System.out.println("  bound[" + i + "] = " + bounds[i]);
       }
     }
+
+    StringSink paren = mkSink();
+    paren.accept("via paren-wrapped method-ref");
 
     System.out.println("WithConsts.LIMIT = " + WithConsts.LIMIT);
     System.out.println("WithConsts.LABEL = " + WithConsts.LABEL);

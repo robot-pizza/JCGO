@@ -2836,8 +2836,23 @@ d : new PrimaryFieldAccess(a, c));
 	//   id (.id)* :: new         (e.g. Foo::new)
 	// Slice 24c grew the receiver to a dotted chain.
 	private static boolean looksLikeMethodRef() {
+		// `( id (.id)* ) :: ...` — paren-wrapped qualified-name receiver.
+		// Real expression receivers (e.g. `(getThing())::method`) still
+		// fall through to the parser's default path; they'd need
+		// capture-via-constructor synthesis which is deferred.
+		if (t.kind == 11 && peek(2).kind == 1) {
+			int idx = 3;
+			while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+				idx += 2;
+			}
+			if (peek(idx).kind != 12) return false;
+			if (peek(idx + 1).kind != 57 || peek(idx + 2).kind != 57) {
+				return false;
+			}
+			int kAfter = peek(idx + 3).kind;
+			return kAfter == 1 || kAfter == 102;
+		}
 		if (t.kind != 1) return false;
-		// Walk past id (.id)* to find `::`.
 		int idx = 2;
 		while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
 			idx += 2;
@@ -2852,6 +2867,13 @@ d : new PrimaryFieldAccess(a, c));
 			SemError("method reference requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
+		// Strip redundant parens around the receiver. looksLikeMethodRef
+		// has already verified the contents are a dotted-id chain.
+		boolean parenWrapped = false;
+		if (t.kind == 11) {
+			Get();
+			parenWrapped = true;
+		}
 		// Collect dotted-id chain into a QualifiedName; first segment
 		// is the outermost. For `System.out::println` the chain is
 		// QualifiedName("System", QualifiedName("out", Empty)).
@@ -2862,6 +2884,9 @@ d : new PrimaryFieldAccess(a, c));
 			Get();  // `.`
 			segs.addElement(new LexTerm(LexTerm.ID, t.val));
 			Get();  // id
+		}
+		if (parenWrapped) {
+			Expect(12);  // `)`
 		}
 		Term qn = Empty.newTerm();
 		for (int i = segs.size() - 1; i >= 0; i--) {
