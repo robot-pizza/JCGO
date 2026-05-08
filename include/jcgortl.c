@@ -241,6 +241,10 @@
 #include "jcgormet.c"
 #endif
 
+#ifdef JCGO_NATCLASS_gnu_java_nio_charset_VMIconvCharset
+#include "jcgoiconv.c"
+#endif
+
 #ifdef JCGO_NATCLASS_java_lang_ref_VMReference
 #include "jcgorefs.c"
 #endif

@@ -238,6 +238,21 @@ public final class Provider extends CharsetProvider
        loadExtended();
        cs = (Charset) charsets.get(canonicalNames.get(charsetName.toLowerCase()));
      }
+    // TODO #12: fall back to OS-level charset support for any name
+    // not covered by Classpath's pure-Java charsets. On Win32 this
+    // routes through MultiByteToWideChar/WideCharToMultiByte (Shift_JIS,
+    // GBK, GB18030, Big5, EUC-KR, KOI8-R, etc.). Cached so repeated
+    // forName(name) calls share a single Charset instance.
+    if (cs == null && VMIconvCharset.supports(charsetName))
+     {
+       String canonical = charsetName.toLowerCase();
+       cs = (Charset) charsets.get(canonical);
+       if (cs == null)
+        {
+          cs = new IconvCharset(charsetName);
+          addCharset(cs);
+        }
+     }
     return cs;
   }
 

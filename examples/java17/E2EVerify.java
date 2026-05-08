@@ -156,6 +156,24 @@ public class E2EVerify {
     System.out.println("eq42(42) = " + eq42.check(Integer.valueOf(42)));
     System.out.println("eq42(99) = " + eq42.check(Integer.valueOf(99)));
 
+    // TODO #12: charset round-trip via OS code page. Shift_JIS isn't
+    // in classpath-0.93's pure-Java set; the iconv shim routes the
+    // call through Win32 MultiByteToWideChar / WideCharToMultiByte.
+    // Tests both ASCII pass-through and non-ASCII multi-byte (the
+    // 'a' hiragana is 2 bytes in Shift_JIS: 0x82 0xa0).
+    String original = "ABあC";
+    byte[] sjisBytes = original.getBytes("Shift_JIS");
+    System.out.println("Shift_JIS encoded length = " + sjisBytes.length);
+    System.out.println("Shift_JIS byte[2] = 0x"
+        + Integer.toHexString(sjisBytes[2] & 0xff));
+    System.out.println("Shift_JIS byte[3] = 0x"
+        + Integer.toHexString(sjisBytes[3] & 0xff));
+    String roundTrip = new String(sjisBytes, "Shift_JIS");
+    System.out.println("Shift_JIS round-trip codepoint[2] = 0x"
+        + Integer.toHexString(roundTrip.charAt(2)));
+    System.out.println("Shift_JIS round-trip == original = "
+        + original.equals(roundTrip));
+
     System.out.println("WithConsts.LIMIT = " + WithConsts.LIMIT);
     System.out.println("WithConsts.LABEL = " + WithConsts.LABEL);
     java.lang.reflect.Field limitField =
