@@ -27,10 +27,17 @@ reflection, and custom @MyTag reflection.
 
 ### Parser gaps
 
-- [ ] **Multi-bound type parameters (`<T extends A & B>`).** Erasure
-  uses the first bound only. JLS says erase to first non-interface
-  bound; the difference matters for cross-cast scenarios. Probably a
-  small fix in `consumeTypeParamList` / `eraseTypeParamRef`.
+- [ ] **Multi-bound type parameter method resolution.** Parser
+  accepts `<T extends A & B>`, captures only the first bound, and
+  erases per JLS to the first bound -- this is correct for the type
+  signature itself. The remaining gap is on the resolver: when user
+  code calls a method that lives on the *second* bound (e.g.
+  `a.compareTo(b)` for `<X extends Number & Comparable>`), JCGO
+  reports "Undefined" because the resolver only walks the first
+  bound. Standard javac inserts an implicit cast; JCGO needs the
+  same handling. Requires teaching method-dispatch resolution about
+  secondary bounds (today they're parsed-and-discarded by
+  consumeTypeParamList's `& X` skip).
 - [ ] **Method-reference parenthesized-expression receivers.** Comment
   in `MethodReference.java:27` notes these are deferred.
 

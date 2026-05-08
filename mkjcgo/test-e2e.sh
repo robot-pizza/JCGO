@@ -79,6 +79,8 @@ pickFirst.getGenericParameterTypes.length = 2
   param[1] = gnu.java.lang.reflect.TypeVariableImpl(name=T)
 Holder.pass.params[0] = TV(U)
 Holder.value.genericType = TV(U)
+firstNum(1,2) = 1
+firstNum(7,3) = 3
 oldMethod isAnnotationPresent(Deprecated) = true
 oldMethod getDeclaredAnnotations.length = 1
 oldMethod ann[0].annotationType = java.lang.Deprecated

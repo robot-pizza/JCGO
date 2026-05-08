@@ -37,6 +37,14 @@ public class E2EVerify {
     public U pass(U x) { return x; }
   }
 
+  // Multi-bound type parameter (`<X extends A & B>`). JCGO erases X to
+  // the first bound (Number per JLS); methods from the second bound
+  // would need an explicit cast. The fixture proves the declaration
+  // parses and the param accepts the first-bound type.
+  public <X extends Number & Comparable> X firstNum(X a, X b) {
+    return a.intValue() < b.intValue() ? a : b;
+  }
+
   @Deprecated
   public void oldMethod() {}
 
@@ -103,6 +111,12 @@ public class E2EVerify {
         + (ft instanceof TypeVariable
             ? "TV(" + ((TypeVariable) ft).getName() + ")"
             : ft.toString()));
+
+    E2EVerify ev = new E2EVerify();
+    System.out.println("firstNum(1,2) = " + ev.firstNum(
+        Integer.valueOf(1), Integer.valueOf(2)));
+    System.out.println("firstNum(7,3) = " + ev.firstNum(
+        Integer.valueOf(7), Integer.valueOf(3)));
 
     Method old = E2EVerify.class.getMethod("oldMethod", new Class[0]);
     System.out.println("oldMethod isAnnotationPresent(Deprecated) = "
