@@ -24,11 +24,6 @@ reflection, and custom @MyTag reflection.
 
 ### Verification gaps (claimed at codegen, not at runtime)
 
-- [ ] **Repeating annotations** (Slice 50) — only smoke-validated.
-  `getAnnotationsByType` should be runtime-tested with a `@Repeatable`
-  container.
-- [ ] **`@Inherited` walk** — implemented in `Class.isAnnotationPresent`
-  but not E2E-tested at runtime.
 - [ ] **Pre-erasure type retention for parameters / fields.** Return
   types verified at runtime (E2EVerify::pickFirst). Parameter and
   field generic-signature retention is only smoke-validated.
