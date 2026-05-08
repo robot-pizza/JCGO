@@ -17,13 +17,6 @@ reflection, and custom @MyTag reflection.
 
 ### Annotation infrastructure
 
-- [ ] **Annotation member defaults discarded.** `Parser.AnnotationTypeDeclaration`
-  parses `default V` and drops V. At runtime `proxy.member()` raises
-  `IncompleteAnnotationException` whenever the user didn't supply the
-  member explicitly. Need a side channel that retains the default
-  value-text per member (similar to existing per-call `argText`) and
-  a parse step in `VMReflectAnnotations` that consults it as a
-  fallback.
 - [ ] **Synthesized @interface lacks ANNOTATION modifier bit.** Real
   ClassDefinitions are produced (Gap #1, 88a95bc) but
   `Class.isAnnotation()` returns false because the modifier bit isn't
