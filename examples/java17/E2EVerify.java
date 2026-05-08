@@ -54,6 +54,16 @@ public class E2EVerify {
     return (System.out)::println;
   }
 
+  interface IntChecker { boolean check(Integer n); }
+
+  static IntChecker mkChecker(Integer threshold) {
+    // Real-expression receiver: `((Comparable) threshold)::equals`.
+    // The receiver isn't a plain qualified-name path -- it's a cast
+    // expression wrapped in parens. The lifted lambda captures
+    // `threshold` from the outer scope and dispatches on the cast.
+    return ((Comparable) threshold)::equals;
+  }
+
   @Deprecated
   public void oldMethod() {}
 
@@ -141,6 +151,10 @@ public class E2EVerify {
 
     StringSink paren = mkSink();
     paren.accept("via paren-wrapped method-ref");
+
+    IntChecker eq42 = mkChecker(Integer.valueOf(42));
+    System.out.println("eq42(42) = " + eq42.check(Integer.valueOf(42)));
+    System.out.println("eq42(99) = " + eq42.check(Integer.valueOf(99)));
 
     System.out.println("WithConsts.LIMIT = " + WithConsts.LIMIT);
     System.out.println("WithConsts.LABEL = " + WithConsts.LABEL);

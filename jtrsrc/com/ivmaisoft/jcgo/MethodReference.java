@@ -139,15 +139,39 @@ final class MethodReference extends LexNode {
             Term typeTerm = unwrapToTypeTerm(terms[0]);
             return new InstanceCreation(typeTerm, args, Empty.newTerm());
         }
-        // `Receiver::method`. Build a qualified-name path
-        // `<receiver>.<method>` and pass it as terms[0] of a
-        // MethodInvocation with terms[1]=Empty, so JCGO resolves the
-        // path the same way it does a regular `Foo.bar(...)` call —
-        // working for both static (Integer::parseInt) and instance-
-        // bound (someVar::method) references.
-        Term receiverPath = unwrapToQualifiedName(terms[0]);
-        Term combined = appendQualifiedSegment(receiverPath, methodName);
-        return new MethodInvocation(combined, Empty.newTerm(), args);
+        // `Receiver::method`. Two shapes:
+        //
+        // (a) Receiver is a qualified-name path (e.g. Integer,
+        //     System.out, someVar). Build a combined path
+        //     `<receiver>.<method>` and pass it as terms[0] of a 2-arg
+        //     MethodInvocation so JCGO resolves it like a regular
+        //     `Foo.bar(...)` call.
+        //
+        // (b) Receiver is an arbitrary expression (e.g.
+        //     `((Comparable) x)::compareTo`, `(getThing())::handle`).
+        //     Build a 3-arg MethodInvocation(receiver, methodName,
+        //     args) -- the receiver expression itself is the call's
+        //     receiver. JCGO's inner-class-captures-outer-locals
+        //     handles capturing any locals referenced inside the
+        //     expression. Note: the expression re-evaluates on each
+        //     SAM invocation rather than once at lambda-creation
+        //     (Java spec says once); for typical receivers (cast,
+        //     field access) this is observably equivalent. Side-
+        //     effecting receivers like `(getStream())::onNext` would
+        //     differ.
+        if (receiverIsQualifiedName(terms[0])) {
+            Term receiverPath = unwrapToQualifiedName(terms[0]);
+            Term combined = appendQualifiedSegment(receiverPath, methodName);
+            return new MethodInvocation(combined, Empty.newTerm(), args);
+        }
+        return new MethodInvocation(terms[0],
+                new LexTerm(LexTerm.ID, methodName), args);
+    }
+
+    private static boolean receiverIsQualifiedName(Term receiver) {
+        Term inner = receiver instanceof Expression
+                ? ((Expression) receiver).terms[0] : receiver;
+        return inner instanceof QualifiedName;
     }
 
     /**

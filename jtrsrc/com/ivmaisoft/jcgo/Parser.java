@@ -2836,20 +2836,25 @@ d : new PrimaryFieldAccess(a, c));
 	//   id (.id)* :: new         (e.g. Foo::new)
 	// Slice 24c grew the receiver to a dotted chain.
 	private static boolean looksLikeMethodRef() {
-		// `( id (.id)* ) :: ...` — paren-wrapped qualified-name receiver.
-		// Real expression receivers (e.g. `(getThing())::method`) still
-		// fall through to the parser's default path; they'd need
-		// capture-via-constructor synthesis which is deferred.
-		if (t.kind == 11 && peek(2).kind == 1) {
-			int idx = 3;
-			while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
-				idx += 2;
+		// `( <expr> ) :: <method>` -- paren-wrapped receiver. Walks
+		// matching-paren-depth from the opening `(` and checks for `::`
+		// followed by an identifier (or `new`) after the close. The
+		// expression may be any Java expression; MethodRefParse parses
+		// it via JavaExpression().
+		if (t.kind == 11) {
+			int idx = 2;
+			int depth = 1;
+			while (depth > 0) {
+				int k = peek(idx).kind;
+				if (k == 0) return false;
+				if (k == 11) depth++;
+				else if (k == 12) depth--;
+				idx++;
 			}
-			if (peek(idx).kind != 12) return false;
-			if (peek(idx + 1).kind != 57 || peek(idx + 2).kind != 57) {
+			if (peek(idx).kind != 57 || peek(idx + 1).kind != 57) {
 				return false;
 			}
-			int kAfter = peek(idx + 3).kind;
+			int kAfter = peek(idx + 2).kind;
 			return kAfter == 1 || kAfter == 102;
 		}
 		if (t.kind != 1) return false;
@@ -2862,40 +2867,73 @@ d : new PrimaryFieldAccess(a, c));
 		return kAfter == 1 || kAfter == 102;
 	}
 
+	// True if the tokens after the already-consumed `(` form a
+	// `id (.id)*` chain followed by `)`. Used by MethodRefParse to
+	// keep the simple paren-wrapped-qualified-name path zero-cost
+	// before falling back to the general JavaExpression parser.
+	private static boolean looksLikeDottedIdToParen() {
+		if (t.kind != 1) return false;
+		int idx = 2;
+		while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+			idx += 2;
+		}
+		return peek(idx).kind == 12;
+	}
+
 	private static Term MethodRefParse() {
 		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
 			SemError("method reference requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
-		// Strip redundant parens around the receiver. looksLikeMethodRef
-		// has already verified the contents are a dotted-id chain.
-		boolean parenWrapped = false;
+		Term receiver;
 		if (t.kind == 11) {
+			// Paren-wrapped receiver. Could be `(id.id...)` (redundant
+			// parens around a qualified name) or any other expression.
+			// Try the dotted-id fast path first; fall back to
+			// JavaExpression for everything else.
 			Get();
-			parenWrapped = true;
-		}
-		// Collect dotted-id chain into a QualifiedName; first segment
-		// is the outermost. For `System.out::println` the chain is
-		// QualifiedName("System", QualifiedName("out", Empty)).
-		ObjVector segs = new ObjVector();
-		segs.addElement(new LexTerm(LexTerm.ID, t.val));
-		Get();
-		while (t.kind == 13 && peek(2).kind == 1) {
-			Get();  // `.`
+			if (looksLikeDottedIdToParen()) {
+				ObjVector segs = new ObjVector();
+				segs.addElement(new LexTerm(LexTerm.ID, t.val));
+				Get();
+				while (t.kind == 13 && peek(2).kind == 1) {
+					Get();
+					segs.addElement(new LexTerm(LexTerm.ID, t.val));
+					Get();
+				}
+				Expect(12);
+				Term qn = Empty.newTerm();
+				for (int i = segs.size() - 1; i >= 0; i--) {
+					qn = qn.notEmpty()
+						? new QualifiedName((Term) segs.elementAt(i), qn)
+						: new QualifiedName((Term) segs.elementAt(i),
+							Empty.newTerm());
+				}
+				receiver = new Expression(qn);
+			} else {
+				Term inner = JavaExpression();
+				Expect(12);
+				receiver = inner instanceof Expression ? inner
+					: new Expression(inner);
+			}
+		} else {
+			ObjVector segs = new ObjVector();
 			segs.addElement(new LexTerm(LexTerm.ID, t.val));
-			Get();  // id
+			Get();
+			while (t.kind == 13 && peek(2).kind == 1) {
+				Get();
+				segs.addElement(new LexTerm(LexTerm.ID, t.val));
+				Get();
+			}
+			Term qn = Empty.newTerm();
+			for (int i = segs.size() - 1; i >= 0; i--) {
+				qn = qn.notEmpty()
+					? new QualifiedName((Term) segs.elementAt(i), qn)
+					: new QualifiedName((Term) segs.elementAt(i),
+						Empty.newTerm());
+			}
+			receiver = new Expression(qn);
 		}
-		if (parenWrapped) {
-			Expect(12);  // `)`
-		}
-		Term qn = Empty.newTerm();
-		for (int i = segs.size() - 1; i >= 0; i--) {
-			qn = qn.notEmpty()
-				? new QualifiedName((Term) segs.elementAt(i), qn)
-				: new QualifiedName((Term) segs.elementAt(i),
-					Empty.newTerm());
-		}
-		Term receiver = new Expression(qn);
 		Expect(57);     // `:`
 		Expect(57);     // `:`
 		boolean isCtor = false;

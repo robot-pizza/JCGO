@@ -86,6 +86,8 @@ smaller.X.bounds.length = 2
   bound[0] = class java.lang.Number
   bound[1] = interface java.lang.Comparable
 via paren-wrapped method-ref
+eq42(42) = true
+eq42(99) = false
 WithConsts.LIMIT = 42
 WithConsts.LABEL = anno-const
 WithConsts.LIMIT (via reflection) = 42
@@ -142,5 +144,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime, @interface consts, multi-bound type-vars, paren method-ref, cross-bound dispatch)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation, parameter annotations, meta-annotations, repeating, @Inherited, type-var params/fields, sealed runtime, @interface consts, multi-bound type-vars, paren method-ref, cross-bound dispatch, complex-receiver method-ref)"
 exit 0
