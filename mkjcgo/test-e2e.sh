@@ -85,7 +85,10 @@ partialDefaults @WithDefaults.level = 99
 allDefaults @WithDefaults.value = ok
 allDefaults @WithDefaults.level = 5
 WithDefaults.value default = ok
-WithDefaults.level default = 5'
+WithDefaults.level default = 5
+MyTag.isAnnotation = true
+WithDefaults.isAnnotation = true
+E2EVerify.isAnnotation = false'
 
 # Strip CRs because Win32 stdio writes \r\n and shell here-doc is \n.
 actual=$(tr -d '\r' < "$OUT/actual.txt")
@@ -106,5 +109,5 @@ if [ "$actual" != "$EXPECTED" ]; then
     exit 1
 fi
 
-echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults)"
+echo "pass: E2EVerify (bridges, generic signatures, builtin + custom annotation Proxy, member defaults, isAnnotation)"
 exit 0

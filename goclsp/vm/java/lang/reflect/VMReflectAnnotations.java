@@ -137,15 +137,16 @@ public final class VMReflectAnnotations
    String argText = argTexts != null && i < argTexts.length
             ? argTexts[i] : null;
    Class annoClass = resolveAnnotationClass(names[i], declaring, loader);
-   // We don't check Class.isAnnotation() because JCGO's @interface
-   // declarations don't currently set the ANNOTATION modifier bit
-   // (parser parses-and-discards the body — see AnnotationTypeDeclaration
-   // in jtrsrc/Parser.java). Built-in annotations supplied by JCGO
-   // (e.g. java.lang.Deprecated, java.lang.annotation.Repeatable)
-   // are plain interfaces that extend Annotation. Names in the
-   // methodsAnnos / classAnnos / fieldsAnnos tables come from
-   // real `@Foo` source-level usages, so any class we can resolve
-   // from those names is an annotation in the source-language sense.
+   // We don't check Class.isAnnotation() because the built-in
+   // annotations supplied by JCGO (java.lang.Deprecated,
+   // java.lang.annotation.Repeatable, etc.) are plain interfaces
+   // that extend Annotation without the ANNOTATION modifier bit.
+   // User-declared @interface types DO set the bit (TODO #2,
+   // markAsAnnotationType in ClassDefinition); keeping the gate
+   // relaxed makes both kinds work uniformly. Names in the
+   // methodsAnnos / classAnnos / fieldsAnnos tables come from real
+   // @Foo source-level usages, so any class we can resolve from
+   // those names is an annotation in the source-language sense.
    if (annoClass == null)
     continue;
    Map values = parseArgText(argText, annoClass, loader, declaring);

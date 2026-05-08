@@ -704,6 +704,14 @@ final class ClassDefinition extends ExpressionType {
         this.permitsList = list;
     }
 
+    // TODO #2: ORs the JLS-standard ANNOTATION modifier bit (0x2000)
+    // onto the class. Called from ClassDeclaration.processPass0 for
+    // IfaceDeclarations synthesized by Parser.AnnotationTypeDeclaration
+    // so Class.isAnnotation() returns true for `@interface` types.
+    void markAsAnnotationType() {
+        modifiers |= AccModifier.ANNOTATION;
+    }
+
     // Slice 50: store the parser-captured `<T, U extends X>` list.
     // Called from ClassDeclaration.processPass0.
     void setGenericSignatureData(ObjVector data) {

@@ -4640,7 +4640,10 @@ d : new PrimaryFieldAccess(a, c));
 		}
 		body = new Seq(body, Empty.newTerm());
 		Term annotationSuper = new ClassOrIfaceType(buildJavaLangAnnoName());
-		return new IfaceDeclaration(annoName, annotationSuper, body);
+		IfaceDeclaration decl = new IfaceDeclaration(annoName, annotationSuper,
+			body);
+		synthesizedAnnotationDecls.add(decl);
+		return decl;
 	}
 
 	// Side channel: synthesized MethodDeclaration for an annotation
@@ -4652,6 +4655,16 @@ d : new PrimaryFieldAccess(a, c));
 	static String getAnnotationDefault(Object decl) {
 		return decl == null ? null
 			: (String) annotationDefaultsByDecl.get(decl);
+	}
+
+	// Side channel: IfaceDeclaration instances synthesized for `@interface`
+	// declarations. ClassDeclaration.processPass0 consults this to OR the
+	// ANNOTATION modifier bit onto ClassDefinition (TODO #2).
+	private static final ObjHashSet synthesizedAnnotationDecls =
+		new ObjHashSet();
+
+	static boolean isSynthesizedAnnotationType(Term decl) {
+		return decl != null && synthesizedAnnotationDecls.contains(decl);
 	}
 
 	private static void skipToTopLevelSemi() {

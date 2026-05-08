@@ -67,6 +67,12 @@ final class AccModifier extends LexNode {
     static final int STRICT = 0x800;
 
     static final int SYNTHETIC = 0x1000;
+    // JLS-standard annotation-type bit (0x2000). Stored on
+    // ClassDefinition.modifiers when an `@interface` declaration is
+    // parsed; Class.isAnnotation() checks for it. Distinct from the
+    // parser-internal LOCALVAR (0x2000) which is never written to a
+    // class-level modifier integer.
+    static final int ANNOTATION = 0x2000;
     static final int ENUM = 0x4000;
 
     static final int DEFAULT = 0x10000;

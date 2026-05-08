@@ -101,6 +101,12 @@ public class E2EVerify {
     Method levelMember = WithDefaults.class.getMethod("level", new Class[0]);
     System.out.println("WithDefaults.level default = "
         + levelMember.getDefaultValue());
+
+    System.out.println("MyTag.isAnnotation = " + MyTag.class.isAnnotation());
+    System.out.println("WithDefaults.isAnnotation = "
+        + WithDefaults.class.isAnnotation());
+    System.out.println("E2EVerify.isAnnotation = "
+        + E2EVerify.class.isAnnotation());
   }
 }
 
