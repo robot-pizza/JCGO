@@ -68,6 +68,11 @@ final class VariableIdentifier extends LexNode {
                             | AccModifier.LOCALVAR | AccModifier.PARAMETER)) == AccModifier.FINAL
                             && ourClass.name().equals(Names.JAVA_LANG_STRING)
                             && name.equals(Names.fieldsOrderString[0]));
+            // TODO #10: thread multi-bound secondaries onto the new var.
+            if (c.typeSecondaryBounds != null && c.typeDims == 0) {
+                v.setMultiBoundSecondaries(c.typeSecondaryBounds);
+            }
+            c.typeSecondaryBounds = null;
             if (v.isLocalOrParam()) {
                 assertCond(c.currentMethod != null);
                 if (!c.currentMethod.addLocalVariable(v)) {

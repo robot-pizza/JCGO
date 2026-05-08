@@ -179,6 +179,19 @@ final class MethodInvocation extends LexNode {
             }
             md = resultClass.matchMethod(msig, c.forClass);
             if (md == null) {
+                ClassDefinition altClass = trySecondaryBoundsForName(
+                        terms[0].dottedName(), c, msig);
+                if (altClass != null) {
+                    Term original = terms[0];
+                    terms[0] = new CastExpression(
+                            new ClassOrIfaceType(altClass), original);
+                    terms[0].processPass1(c);
+                    resultClass = terms[0].exprType().receiverClass();
+                    actualType0 = terms[0].actualExprType();
+                    md = resultClass.matchMethod(msig, c.forClass);
+                }
+            }
+            if (md == null) {
                 undefinedMethod(resultClass, msig, c);
                 return;
             }
@@ -224,6 +237,38 @@ final class MethodInvocation extends LexNode {
                     terms[2].getSignature());
             resultClass = aclass;
             md = aclass.matchMethod(msig, c.forClass);
+            if (md == null && vecSize == 2 && terms[0] instanceof QualifiedName) {
+                // TODO #10: path-style `a.method(args)` where `a` was a
+                // multi-bound type-var-typed variable. Rewrite to
+                // `((Bound) a).method(args)`: replace terms[0] with
+                // CastExpression around the receiver-name segment and
+                // let the rest of the branch2 + common post-match
+                // logic carry on. The state changes (aclass, resultClass,
+                // actualType0, actualClass) match what the equivalent
+                // 3-arg form would produce, including the
+                // actualClass.getSameMethod(md) fallback that updates
+                // actualClass back to the interface bound -- this is
+                // what causes Comparable to be marked used and the
+                // VFUNC dispatch path to fire.
+                QualifiedName qn = (QualifiedName) terms[0];
+                String rcvName = qn.terms[0].dottedName();
+                ClassDefinition altClass = trySecondaryBoundsForName(
+                        rcvName, c, msig);
+                if (altClass != null) {
+                    Term receiverExpr = new Expression(
+                            new QualifiedName(qn.terms[0], Empty.newTerm()));
+                    Term castReceiver = new CastExpression(
+                            new ClassOrIfaceType(altClass), receiverExpr);
+                    terms[0] = castReceiver;
+                    terms[1] = new LexTerm(LexTerm.ID, id);
+                    terms[0].processPass1(c);
+                    resultClass = terms[0].exprType().receiverClass();
+                    actualType0 = terms[0].actualExprType();
+                    actualClass = actualType0.receiverClass();
+                    aclass = resultClass;
+                    md = aclass.matchMethod(msig, c.forClass);
+                }
+            }
             if (md == null) {
                 undefinedMethod(aclass, msig, c);
                 return;
@@ -1198,6 +1243,48 @@ final class MethodInvocation extends LexNode {
      * elements) is left to a follow-up; common JDK calls like
      * println(Object) fall in the fixed-arity prefix.
      */
+    private static ClassDefinition trySecondaryBoundsForName(
+            String varName, Context c, MethodSignature msig) {
+        if (varName == null || c.currentMethod == null) return null;
+        VariableDefinition rcv = c.currentMethod.getLocalVar(varName);
+        if (rcv == null) return null;
+        String secs = rcv.getMultiBoundSecondaries();
+        if (secs == null || secs.length() == 0) return null;
+        int start = 0;
+        while (start <= secs.length()) {
+            int amp = secs.indexOf('&', start);
+            String boundName = amp < 0 ? secs.substring(start)
+                    : secs.substring(start, amp);
+            if (boundName.length() > 0) {
+                ClassDefinition cd = resolveSecondaryBound(boundName, c);
+                if (cd != null && cd.matchMethod(msig, c.forClass) != null) {
+                    return cd;
+                }
+            }
+            if (amp < 0) break;
+            start = amp + 1;
+        }
+        return null;
+    }
+
+    private static ClassDefinition resolveSecondaryBound(String name,
+            Context c) {
+        try {
+            ClassDefinition cd = c.resolveClass(name, true, false);
+            if (cd != null) return cd;
+        } catch (RuntimeException e) {
+            // ignore
+        }
+        if (name.indexOf('.') < 0) {
+            try {
+                return c.resolveClass("java.lang." + name, true, false);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private void applyArgAutobox(Context c) {
         if (md == null) return;
         if (Main.dict.javaVersion < JavaVersion.JLS_50) return;

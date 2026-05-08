@@ -79,6 +79,10 @@ final class Context {
 
     ClassDefinition typeClassDefinition;
 
+    // TODO #10: when typeClassDefinition was erased from a multi-bound
+    // type-var, holds the `&`-joined secondary-bound names.
+    String typeSecondaryBounds;
+
     int typeDims;
 
     int modifiers;

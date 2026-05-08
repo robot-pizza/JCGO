@@ -121,6 +121,10 @@ final class VariableDefinition {
     // `List<T> field` keeps `<TT;>` here). Null otherwise.
     private String fieldTypeCapturedArgs;
 
+    // TODO #10: `&`-joined dotted names of secondary bounds when this
+    // variable was declared with a multi-bound type-var.
+    private String multiBoundSecondaries;
+
     private boolean used;
 
     private boolean initUsedOnly;
@@ -417,6 +421,14 @@ final class VariableDefinition {
 
     void setFieldTypeCapturedArgs(String args) {
         this.fieldTypeCapturedArgs = args;
+    }
+
+    void setMultiBoundSecondaries(String s) {
+        this.multiBoundSecondaries = s;
+    }
+
+    String getMultiBoundSecondaries() {
+        return multiBoundSecondaries;
     }
 
     // Slice 50: build a JLS field-type signature per JVMS 4.7.9.1.

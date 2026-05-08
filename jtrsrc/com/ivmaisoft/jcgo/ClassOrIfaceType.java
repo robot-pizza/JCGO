@@ -94,6 +94,8 @@ final class ClassOrIfaceType extends LexNode {
             cd = c.resolveClass(nameTerm.dottedName(), true, false);
         }
         c.typeClassDefinition = cd;
+        c.typeSecondaryBounds = nameTerm == null ? null
+                : Parser.getSecondaryBoundsFor(nameTerm);
     }
 
     ExpressionType exprType() {

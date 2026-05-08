@@ -56,6 +56,7 @@ final class PrimitiveType extends LexNode {
 
     void processPass1(Context c) {
         c.typeClassDefinition = Main.dict.classTable[primtype];
+        c.typeSecondaryBounds = null;
     }
 
     ExpressionType exprType() {

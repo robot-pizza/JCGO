@@ -3318,7 +3318,38 @@ d : new PrimaryFieldAccess(a, c));
 		Term replacement = bound == null ? objectTypeName()
 				: qualifiedNameFromDotted(bound);
 		erasedTypeOriginalNames.put(replacement, dotted);
+		// TODO #10: stash secondary bounds (everything after the first
+		// `&` in the full bounds string) so the resolver can retry
+		// method dispatch via cross-bound cast injection.
+		Object boundEntry = null;
+		for (int i = typeParamScopes.size() - 1; i >= 0 && boundEntry == null; i--) {
+			ObjVector scope = (ObjVector) typeParamScopes.elementAt(i);
+			for (int j = 0; j < scope.size(); j += 2) {
+				if (dotted.equals(scope.elementAt(j))) {
+					boundEntry = scope.elementAt(j + 1);
+					break;
+				}
+			}
+		}
+		if (boundEntry != null) {
+			String full = (String) boundEntry;
+			int amp = full.indexOf('&');
+			if (amp >= 0) {
+				secondaryBoundsByErased.put(replacement,
+						full.substring(amp + 1));
+			}
+		}
 		return replacement;
+	}
+
+	// TODO #10: side channel from substituted Term to its `&`-joined
+	// secondary-bound names.
+	private static final ObjHashtable secondaryBoundsByErased =
+			new ObjHashtable();
+
+	static String getSecondaryBoundsFor(Term erasedTerm) {
+		return erasedTerm == null ? null
+				: (String) secondaryBoundsByErased.get(erasedTerm);
 	}
 
 	// Slice 50 (pre-erasure retention): side channel from the Term

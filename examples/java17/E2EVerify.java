@@ -37,12 +37,12 @@ public class E2EVerify {
     public U pass(U x) { return x; }
   }
 
-  // Multi-bound type parameter (`<X extends A & B>`). JCGO erases X to
-  // the first bound (Number per JLS); explicit cast to the second
-  // bound is needed so the C codegen dispatches through the interface
-  // vtable rather than the class one.
+  // Multi-bound type parameter (`<X extends A & B>`). JCGO erases X
+  // to the first bound (Number) but the resolver retries against
+  // the secondaries when matchMethod fails on the leftmost bound,
+  // injecting a synthetic cast (TODO #10).
   public <X extends Number & Comparable> X smaller(X a, X b) {
-    return ((Comparable) a).compareTo(b) <= 0 ? a : b;
+    return a.compareTo(b) <= 0 ? a : b;
   }
 
   interface StringSink { void accept(String s); }
