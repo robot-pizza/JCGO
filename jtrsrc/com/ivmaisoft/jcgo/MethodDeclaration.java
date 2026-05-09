@@ -146,7 +146,7 @@ final class MethodDeclaration extends LexNode {
         if (annoArgs != null) {
             md.setAnnotationArgs(annoArgs);
         }
-        // TODO #1: when this MethodDeclaration was synthesized for an
+        // Slice #1: when this MethodDeclaration was synthesized for an
         // @interface element with `default V`, pick up the captured V
         // text and thread it onto the MethodDefinition. The string is
         // emitted into the methodsDefault[] reflection table for the
@@ -162,7 +162,7 @@ final class MethodDeclaration extends LexNode {
         if (paramAnnos != null) {
             md.setParameterAnnotationLists(paramAnnos);
         }
-        // TODO #3: parallel walk for arg-text strings.
+        // Slice #3: parallel walk for arg-text strings.
         ObjVector paramAnnoArgs = collectParamAnnotationArgs(terms[3]);
         if (paramAnnoArgs != null) {
             md.setParameterAnnotationArgsLists(paramAnnoArgs);

@@ -704,7 +704,7 @@ final class ClassDefinition extends ExpressionType {
         this.permitsList = list;
     }
 
-    // TODO #2: ORs the JLS-standard ANNOTATION modifier bit (0x2000)
+    // Slice #2: ORs the JLS-standard ANNOTATION modifier bit (0x2000)
     // onto the class. Called from ClassDeclaration.processPass0 for
     // IfaceDeclarations synthesized by Parser.AnnotationTypeDeclaration
     // so Class.isAnnotation() returns true for `@interface` types.
@@ -5342,7 +5342,7 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
         }
         outputContext.cPrint(",\010");
-        // TODO #3: methodsParamAnnoArgs — per-method String[][]
+        // Slice #3: methodsParamAnnoArgs — per-method String[][]
         // parallel to methodsParamAnnos, holding the raw arg-text
         // string for each (parameter, annotation) slot. NULL outer
         // when no parameter has annotation args.
@@ -5408,7 +5408,7 @@ final class ClassDefinition extends ExpressionType {
             outputContext.cPrint(LexTerm.NULL_STR);
         }
         outputContext.cPrint(",\010");
-        // TODO #1: methodsDefault — per-method String holding the raw
+        // Slice #1: methodsDefault — per-method String holding the raw
         // `default V` text from an @interface element declaration.
         // NULL when no method in this class has a default. Runtime
         // VMReflectAnnotations parses the text on demand.

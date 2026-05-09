@@ -180,13 +180,13 @@ final class MethodDefinition {
     // method/constructor is annotated.
     private ObjVector parameterAnnotationLists;
 
-    // TODO #3: parallel arg-text per-parameter list (raw paren content
+    // Slice #3: parallel arg-text per-parameter list (raw paren content
     // of each annotation on each parameter). Same shape as
     // parameterAnnotationLists. Null overall when no parameter has
     // annotation args (or when no parameter is annotated at all).
     private ObjVector parameterAnnotationArgsLists;
 
-    // TODO #1: raw text of the `default V` clause for an annotation
+    // Slice #1: raw text of the `default V` clause for an annotation
     // member declaration (e.g. "5" for `int level() default 5;` or
     // "\"ok\"" for `String value() default "ok";`). Null when the
     // method isn't an annotation member or has no default. Emitted
@@ -855,10 +855,13 @@ final class MethodDefinition {
         return bound;
     }
 
-    // TODO #10 partial: emit `:L<bound>;` once for a single bound, or
+    // Slice #10: emit `:L<bound>;` once for a single bound, or
     // `:L<a>;:L<b>;...` for the multi-bound `<T extends A & B>` form
     // (JVMS 4.7.9.1). The bound string was joined with `&` in
-    // Parser.consumeTypeParamList.
+    // Parser.consumeTypeParamList. Loop below handles both shapes
+    // uniformly — earlier "partial" labeling was stale; the
+    // `&`-split walk added multi-bound support without updating the
+    // comment.
     static void appendBoundSegments(StringBuffer sb, String bound) {
         if (bound == null || bound.length() == 0) {
             sb.append(':').append('L')

@@ -284,71 +284,21 @@ before declaring full confidence.
   `qn.terms[0]` directly (the head chain) since the QualifiedName
   layout is `terms[0]=head, terms[1]=last segment`.
 
-### In-code `TODO #N` comment audit
+### In-code `TODO #N` comment cleanup (done)
 
-A `grep -rn "TODO\b"` across `jtrsrc/`, `goclsp/vm/`, `include/jcgo*.c`,
-`native/`, `examples/java17/`, `mkjcgo/test-e2e.sh` finds 34 hits.
-Cataloged here so we can decide per-comment whether each is genuine
-unfinished work or stale labeling on now-shipped code. Numbers (`#1`,
-`#2`, ...) correspond to JCGO modernization slices; many of those
-slices are now CHECKED IN this TODO.md. The convention so far has
-been to keep the slice number as a permanent doc tag, not a "to do"
-marker — but the literal text "TODO" reads as if work is pending.
+Earlier scan: `grep -rn "TODO\b"` across `jtrsrc/`, `goclsp/vm/`,
+`include/jcgo*.c`, `native/`, `examples/java17/`,
+`mkjcgo/test-e2e.sh` found 34 hits. All described shipped work
+keyed by slice number — not pending tasks. Bulk-rewrote the prefix
+to `Slice #N` so future greps for unfinished work return clean.
 
-`#1` (annotation member defaults — shipped):
-  - `jtrsrc/com/ivmaisoft/jcgo/ClassDefinition.java:5411`
-  - `jtrsrc/com/ivmaisoft/jcgo/MethodDeclaration.java:149`
-  - `jtrsrc/com/ivmaisoft/jcgo/MethodDefinition.java:189`
-  - `goclsp/vm/java/lang/reflect/Method.java:363`
-  - `goclsp/vm/java/lang/reflect/VMMethod.java:952`
-  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:172`
-  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:271`
-  - `include/jcgormet.c:154`
+The lone `MethodDefinition.java:858` "TODO #10 partial" was stale:
+`appendBoundSegments` actually handles both single-bound and
+multi-bound (`<T extends A & B>`) forms via the `&`-split walk.
+Updated to `Slice #10` and added a note in the comment that the
+"partial" label was leftover from before multi-bound support.
 
-`#2` (annotation modifier bit — shipped):
-  - `jtrsrc/com/ivmaisoft/jcgo/ClassDeclaration.java:104`
-  - `jtrsrc/com/ivmaisoft/jcgo/ClassDefinition.java:707`
-  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:4818`
-  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:144`
-
-`#3` (parameter annotation arg text — shipped):
-  - `jtrsrc/com/ivmaisoft/jcgo/ClassDefinition.java:5345`
-  - `jtrsrc/com/ivmaisoft/jcgo/MethodDeclaration.java:165`
-  - `jtrsrc/com/ivmaisoft/jcgo/MethodDefinition.java:183`
-  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:168`
-  - `goclsp/vm/java/lang/reflect/Constructor.java:327`
-  - `goclsp/vm/java/lang/reflect/Method.java:376`
-  - `goclsp/vm/java/lang/reflect/VMMethod.java:946`
-  - `include/jcgormet.c:142`
-
-`#4` (built-in annotation resolution — shipped):
-  - `jtrsrc/com/ivmaisoft/jcgo/ClassDictionary.java:602`
-  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:701`
-
-`#10` (cross-bound dispatch — shipped):
-  - `jtrsrc/com/ivmaisoft/jcgo/Context.java:82`
-  - `jtrsrc/com/ivmaisoft/jcgo/MethodDefinition.java:858`
-  - `jtrsrc/com/ivmaisoft/jcgo/MethodInvocation.java:241`
-  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:3359`
-  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:3383`
-  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:3565`
-  - `jtrsrc/com/ivmaisoft/jcgo/VariableDefinition.java:124`
-  - `jtrsrc/com/ivmaisoft/jcgo/VariableIdentifier.java:71`
-  - `examples/java17/E2EVerify.java:43`
-
-`#12` (iconv multi-byte charsets — shipped):
-  - `jtrsrc/com/ivmaisoft/jcgo/Names.java:1435`
-  - `include/jcgoiconv.c:5`
-  - `examples/java17/E2EVerify.java:237`
-
-Suspected status: every entry above is descriptive doc on shipped
-work, not pending work — verified against TODO.md's `[x]` items and
-against the surrounding code, which in each case implements what the
-comment describes. Recommendation: rewrite each comment to drop
-"TODO" (e.g. "Slice #N: ..." or just descriptive prose), so future
-greps for unfinished work return clean. One comment to keep tagged
-as actually-partial: `MethodDefinition.java:858` reads "TODO #10
-partial:" — verify whether that's still partial or now full.
+Final state: zero `TODO` matches in production code.
 
 ### Won't do
 

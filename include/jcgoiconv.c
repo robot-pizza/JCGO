@@ -2,7 +2,7 @@
  * @(#) $(JCGO)/include/jcgoiconv.c --
  * a part of the JCGO runtime subsystem.
  **
- * TODO #12: charset conversion via Win32 MultiByteToWideChar /
+ * Slice #12: charset conversion via Win32 MultiByteToWideChar /
  * WideCharToMultiByte. Maps charset names (e.g. "Shift_JIS",
  * "GBK", "GB18030", "Big5", "EUC-KR", "KOI8-R") to Windows code
  * pages and routes the conversion through the Win32 API. Linux /

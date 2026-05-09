@@ -101,7 +101,7 @@ class ClassDeclaration extends LexNode {
         if (annoArgs != null) {
             classDefn.setAnnotationArgs(annoArgs);
         }
-        // TODO #2: when the IfaceDeclaration was synthesized for an
+        // Slice #2: when the IfaceDeclaration was synthesized for an
         // @interface (rather than a plain `interface`), OR the
         // ANNOTATION bit (0x2000) into ClassDefinition.modifiers so
         // Class.isAnnotation() returns true at runtime.

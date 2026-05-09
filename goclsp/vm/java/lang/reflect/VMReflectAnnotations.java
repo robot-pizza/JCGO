@@ -141,7 +141,7 @@ public final class VMReflectAnnotations
    // annotations supplied by JCGO (java.lang.Deprecated,
    // java.lang.annotation.Repeatable, etc.) are plain interfaces
    // that extend Annotation without the ANNOTATION modifier bit.
-   // User-declared @interface types DO set the bit (TODO #2,
+   // User-declared @interface types DO set the bit (Slice #2,
    // markAsAnnotationType in ClassDefinition); keeping the gate
    // relaxed makes both kinds work uniformly. Names in the
    // methodsAnnos / classAnnos / fieldsAnnos tables come from real
@@ -169,7 +169,7 @@ public final class VMReflectAnnotations
   return r;
  }
 
- // TODO #1: for any annotation member not present in `values`, look
+ // Slice #1: for any annotation member not present in `values`, look
  // up the member's declared default (via Method.getDefaultValue) and
  // populate the map. Without this, AnnotationInvocationHandler raises
  // IncompleteAnnotationException for unspecified members that have a
@@ -268,7 +268,7 @@ public final class VMReflectAnnotations
   return m;
  }
 
- // TODO #1 entry point for Method.getDefaultValue. Same parser as the
+ // Slice #1 entry point for Method.getDefaultValue. Same parser as the
  // per-call arg-text path; the input is the raw text JCGO captured at
  // parse time for an annotation member's `default V` clause.
  public static Object parseDefaultValue(String text, Class targetType,
@@ -698,7 +698,7 @@ public final class VMReflectAnnotations
    c = tryLoad("java.lang." + name, loader);
    if (c != null)
     return c;
-   // TODO #4: also try java.lang.annotation.* — built-in JLS 5+
+   // Slice #4: also try java.lang.annotation.* — built-in JLS 5+
    // meta-annotations live there (Retention, Target, Documented,
    // Inherited, Repeatable). The parser captures the unqualified
    // name and the declaring class's package may not contain them.

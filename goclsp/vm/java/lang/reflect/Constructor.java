@@ -324,7 +324,7 @@ public final class Constructor extends AccessibleObject
           signature)).getGenericParameterTypes();
  }
 
- // TODO #3: parallel to Method.getParameterAnnotations.
+ // Slice #3: parallel to Method.getParameterAnnotations.
  public Annotation[][] getParameterAnnotations()
  {
   String[][][] all = VMMethod.getMethodsParamAnnos0(getDeclaringClass());

@@ -121,7 +121,7 @@ final class VariableDefinition {
     // `List<T> field` keeps `<TT;>` here). Null otherwise.
     private String fieldTypeCapturedArgs;
 
-    // TODO #10: `&`-joined dotted names of secondary bounds when this
+    // Slice #10: `&`-joined dotted names of secondary bounds when this
     // variable was declared with a multi-bound type-var.
     private String multiBoundSecondaries;
 

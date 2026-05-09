@@ -40,7 +40,7 @@ public class E2EVerify {
   // Multi-bound type parameter (`<X extends A & B>`). JCGO erases X
   // to the first bound (Number) but the resolver retries against
   // the secondaries when matchMethod fails on the leftmost bound,
-  // injecting a synthetic cast (TODO #10).
+  // injecting a synthetic cast (Slice #10).
   public <X extends Number & Comparable> X smaller(X a, X b) {
     return a.compareTo(b) <= 0 ? a : b;
   }
@@ -245,7 +245,7 @@ public class E2EVerify {
     System.out.println("is42mc(99) = " + is42mc.test(Integer.valueOf(99)));
     System.out.println("mc rcv-evals after two SAM calls = " + rcvCounter);
 
-    // TODO #12: charset round-trip via OS code page. Shift_JIS isn't
+    // Slice #12: charset round-trip via OS code page. Shift_JIS isn't
     // in classpath-0.93's pure-Java set; the iconv shim routes the
     // call through Win32 MultiByteToWideChar / WideCharToMultiByte.
     // Tests both ASCII pass-through and non-ASCII multi-byte (the

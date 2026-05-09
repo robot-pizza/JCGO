@@ -360,7 +360,7 @@ public final class Method extends AccessibleObject
   return (new MethodSignatureParser(this, signature)).getGenericReturnType();
  }
 
- // TODO #1: when the declaring class is an @interface, the parser
+ // Slice #1: when the declaring class is an @interface, the parser
  // captured the raw `default V` text into a per-method String[]; here
  // we look it up and parse it against this method's return type.
  public Object getDefaultValue()
@@ -373,7 +373,7 @@ public final class Method extends AccessibleObject
           getDeclaringClass());
  }
 
- // TODO #3: build Annotation[][] for the parameters of this method.
+ // Slice #3: build Annotation[][] for the parameters of this method.
  // Outer dim: parameter position. Each Annotation[] is built via the
  // Proxy machinery from the per-(parameter, annotation) name and
  // arg-text tables that codegen emitted from the parser side channel.

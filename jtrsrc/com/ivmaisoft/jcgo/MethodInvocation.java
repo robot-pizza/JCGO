@@ -238,7 +238,7 @@ final class MethodInvocation extends LexNode {
             resultClass = aclass;
             md = aclass.matchMethod(msig, c.forClass);
             if (md == null && vecSize >= 2 && terms[0] instanceof QualifiedName) {
-                // TODO #10: path-style `a.method(args)` where `a` (or a
+                // Slice #10: path-style `a.method(args)` where `a` (or a
                 // dotted-field chain like `a.b.c`) is a multi-bound
                 // type-var-typed variable / field. Rewrite to
                 // `((Bound) <receiverPath>).method(args)`: replace

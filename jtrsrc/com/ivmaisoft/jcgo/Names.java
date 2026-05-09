@@ -1432,7 +1432,7 @@ final class Names {
                         .equals(JAVA_LANG_VMPROCESS))
                 || name.equals(JAVA_NIO_VMDIRECTBYTEBUFFER)
                 || name.equals(SUN_MISC_UNSAFE)
-                // TODO #12: VMIconvCharset's natives need direct
+                // Slice #12: VMIconvCharset's natives need direct
                 // C-call dispatch (no JNI shim) so they hook into
                 // include/jcgoiconv.c the same way java.lang.* VM
                 // helpers do.

@@ -165,7 +165,7 @@ public class Parser {
 	private static final ObjHashtable paramAnnotationsByDecl =
 			new ObjHashtable();
 
-	// TODO #3: parallel to paramAnnotationsByDecl; stores per-param
+	// Slice #3: parallel to paramAnnotationsByDecl; stores per-param
 	// annotation arg-text strings (paren contents) so runtime
 	// Method.getParameterAnnotations can build full proxies, not just
 	// markers.
@@ -3371,7 +3371,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term replacement = bound == null ? objectTypeName()
 				: qualifiedNameFromDotted(bound);
 		erasedTypeOriginalNames.put(replacement, dotted);
-		// TODO #10: stash secondary bounds (everything after the first
+		// Slice #10: stash secondary bounds (everything after the first
 		// `&` in the full bounds string) so the resolver can retry
 		// method dispatch via cross-bound cast injection.
 		Object boundEntry = null;
@@ -3395,7 +3395,7 @@ d : new PrimaryFieldAccess(a, c));
 		return replacement;
 	}
 
-	// TODO #10: side channel from substituted Term to its `&`-joined
+	// Slice #10: side channel from substituted Term to its `&`-joined
 	// secondary-bound names.
 	private static final ObjHashtable secondaryBoundsByErased =
 			new ObjHashtable();
@@ -3577,7 +3577,7 @@ d : new PrimaryFieldAccess(a, c));
 
 	// Slice 46: dotted bound name for an active type-param, or null
 	// if unbounded / not in scope. Innermost scope wins on shadowing.
-	// TODO #10: for multi-bound `<T extends A & B>`, the scope stores
+	// Slice #10: for multi-bound `<T extends A & B>`, the scope stores
 	// the bounds as a single `A&B` string. Erasure uses the FIRST
 	// bound per JLS 4.4, so split here and return the leftmost part.
 	private static String activeBoundFor(String name) {
@@ -4830,7 +4830,7 @@ d : new PrimaryFieldAccess(a, c));
 
 	// Side channel: IfaceDeclaration instances synthesized for `@interface`
 	// declarations. ClassDeclaration.processPass0 consults this to OR the
-	// ANNOTATION modifier bit onto ClassDefinition (TODO #2).
+	// ANNOTATION modifier bit onto ClassDefinition (Slice #2).
 	private static final ObjHashSet synthesizedAnnotationDecls =
 		new ObjHashSet();
 
