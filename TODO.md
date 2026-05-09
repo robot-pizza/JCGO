@@ -36,9 +36,25 @@ change to run through JCGO.
   pass1, and pass1ing in the outer context binds free names there,
   blocking the anon-class capture machinery from re-binding them
   inside the lifted class. So this shape still re-evaluates the
-  expression per SAM call. A real fix needs either an idempotent
-  re-pass1 in inner context, or a synthesized helper-method on
-  the enclosing class that takes the receiver as a parameter.
+  expression per SAM call.
+
+  Attempted-and-backed-out: a synthesized static helper method on
+  the enclosing class — `$mref$factory$N(R rcv) { return new
+  TargetIface() { ... rcv.method(args) ... }; }` — wired via
+  `ClassDefinition.addMethod` during pass1, with the call-site
+  rewritten to `$mref$factory$N(receiverExpr)`. The architecture
+  rejects this: methods added mid-pass1 don't go through the
+  normal `prepareMethodsForOutput → discoverObjLeaks` ordering;
+  the inner `InstanceCreation` doesn't pass0 in a sensible
+  context; and a "Cannot create an instance of an abstract class"
+  error fires because the anon-class definition isn't registered
+  through the usual lift path. Worth revisiting; cleaner path is
+  a parse-time hoister (`SwitchArgHoister`-style) that lifts the
+  receiver to a synthesized local at the surrounding statement
+  level BEFORE pass1, so the receiver becomes a single-name
+  reference that the existing QualifiedName path handles
+  trivially. Cost: another tree-walk pass with the same
+  scope-skipping rules SwitchArgHoister already implements.
 
 ### `java.lang.management` Android subset
 
