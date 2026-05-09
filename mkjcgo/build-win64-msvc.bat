@@ -6,8 +6,13 @@
 @rem * cd <path_to_jcgo>
 @rem * (cd contrib; curl -L https://github.com/ivmai/bdwgc/releases/download/v8.2.8/gc-8.2.8.tar.gz | tar zxf -; mv gc-8.2.8 bdwgc)
 @rem * (cd contrib/bdwgc; curl -L https://github.com/ivmai/libatomic_ops/releases/download/v7.8.4/libatomic_ops-7.8.4.tar.gz | tar zxf -; mv libatomic_ops-7.8.4 libatomic_ops)
-@rem * set INCLUDE=<path_to_vc>\include;<path_to_winsdk>\Include
-@rem * set LIB=<path_to_vc>\lib\amd64;<path_to_winsdk>\Lib\x64
+@rem
+@rem MSVC environment (cl, lib, INCLUDE, LIB) is loaded automatically
+@rem via mkjcgo\vcvars-locate.bat -- no need to run from a VS Developer
+@rem Command Prompt. If you already are in one (VCINSTALLDIR is set),
+@rem the helper is a no-op.
+
+@call "%~dp0vcvars-locate.bat" x64 || exit /b 1
 
 @set AR=lib
 @set CC=cl

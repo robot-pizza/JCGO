@@ -66,8 +66,10 @@ help:
 	@echo   clean-win64-msvc  Remove amd64 MSVC build outputs.
 	@echo   clean-zip         Remove dist/.
 	@echo.
-	@echo Prerequisites (see mkjcgo/build-win{32,64}-msvc.bat headers):
-	@echo   - MSVC toolchain on PATH (run from matching VS Developer Prompt)
-	@echo   - INCLUDE and LIB env vars set to VC + Windows SDK paths
-	@echo   - contrib/bdwgc/, contrib/bdwgc/libatomic_ops/, contrib/tinygc/ unpacked
-	@echo   - JDK with javac/jar on PATH (for jcgo-jar)
+	@echo Prerequisites:
+	@echo   - Visual Studio 2017+ installed (any edition, incl. Build Tools).
+	@echo     vcvars is auto-loaded via mkjcgo/vcvars-locate.bat; no need
+	@echo     to run from a VS Developer Command Prompt.
+	@echo   - JDK with javac/jar on PATH (for jcgo-jar).
+	@echo   - contrib/bdwgc/, contrib/bdwgc/libatomic_ops/, contrib/tinygc/
+	@echo     unpacked (see mkjcgo/build-win{32,64}-msvc.bat headers).
