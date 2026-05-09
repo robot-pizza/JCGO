@@ -1,5 +1,18 @@
 # Top-level entry point for JCGO build deliverables.
 # Wraps the per-platform scripts under mkjcgo/.
+#
+# Two pipelines, mirrored on aisend's pattern:
+#
+#   BUILD ZIP (`make zip`):  dependencies + jcgo-jar + all
+#                              -> dist/jcgo-binaries-windows.zip
+#                            Self-contained release artifact, ready to
+#                            attach to a GitHub release.
+#
+#   PUBLISH (`make release`): runs mkjcgo/publish-release.ps1 which
+#                            reads VERSION, calls `make zip`, tags the
+#                            source repo, attaches the zip to a GitHub
+#                            release on robot-pizza/JCGO, then bumps
+#                            VERSION (minor) and pushes the bump.
 
 .PHONY: all win32-msvc win64-msvc jcgo-jar dependencies zip release \
         clean clean-win32-msvc clean-win64-msvc clean-zip help
@@ -26,15 +39,17 @@ win64-msvc: dependencies
 jcgo-jar:
 	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\build-jars.ps1
 
-# Package the release. Stages artifacts under dist/jcgo-binaries-windows/
-# and zips them. Doesn't depend on the build targets — verifies inputs
-# exist and errors with guidance if not. Use `make release` for the
-# end-to-end build + package flow.
-zip:
+# Build the release artifact. Drives the full build chain (deps +
+# jars + per-arch MSVC) then stages everything into
+# dist/jcgo-binaries-windows/ and zips that folder.
+zip: dependencies jcgo-jar all
 	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\zip-release.ps1
 
-# End-to-end: fetch contrib, build everything, then zip.
-release: dependencies jcgo-jar all zip
+# Cut a release: tag, attach the zip to a GitHub release, bump
+# VERSION, push. See mkjcgo/publish-release.ps1 for the full flow
+# and prereqs (gh CLI, clean tree, on master).
+release:
+	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\publish-release.ps1
 
 clean: clean-win32-msvc clean-win64-msvc clean-zip
 
@@ -67,9 +82,10 @@ help:
 	@echo                     (idempotent). Auto-run before win32-msvc/win64-msvc.
 	@echo   jcgo-jar          Build jcgo.jar + auxbin/jre/*.jar (translator).
 	@echo                     Pure PowerShell; needs javac/jar on PATH.
-	@echo   zip               Package dist/jcgo-binaries-windows.zip from
-	@echo                     existing build artifacts.
-	@echo   release           dependencies + jcgo-jar + all + zip (end-to-end).
+	@echo   zip               Full build + dist/jcgo-binaries-windows.zip.
+	@echo   release           Tag + attach zip to a GitHub release + bump
+	@echo                     VERSION + push. Reads VERSION at repo root.
+	@echo                     Requires gh CLI, clean tree, on master.
 	@echo   clean             Remove all build + dist outputs.
 	@echo   clean-win32-msvc  Remove x86 MSVC build outputs.
 	@echo   clean-win64-msvc  Remove amd64 MSVC build outputs.
@@ -81,6 +97,7 @@ help:
 	@echo     to run from a VS Developer Command Prompt.
 	@echo   - JDK with javac/jar on PATH (for jcgo-jar).
 	@echo   - Internet access on first run (for `make dependencies`).
+	@echo   - For `make release`: gh CLI authenticated.
 	@echo.
 	@echo Optional:
 	@echo   - To build the TinyGC DLL, drop tinygc-2_6.tar.bz2 in contrib/
