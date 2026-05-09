@@ -45,6 +45,23 @@
 #include <signal.h>
 #include <string.h>
 
+/* The CONTEXT record's instruction/stack-pointer fields are arch-named
+ * (Rip/Rsp on x64, Eip/Esp on x86). RtlLookupFunctionEntry and
+ * RtlVirtualUnwind only exist on x64, so the full stack walk below
+ * is x64-only -- the x86 path falls back to recording just the
+ * faulting frame. */
+#if defined(_M_X64) || defined(_M_AMD64) || defined(_WIN64)
+# define JCGO_CRASH_HAS_UNWIND 1
+# define JCGO_CRASH_IP(c)      ((c).Rip)
+# define JCGO_CRASH_SP(c)      ((c).Rsp)
+#elif defined(_M_IX86) || defined(_M_I386) || defined(_X86_)
+# define JCGO_CRASH_HAS_UNWIND 0
+# define JCGO_CRASH_IP(c)      ((DWORD64)(c).Eip)
+# define JCGO_CRASH_SP(c)      ((DWORD64)(c).Esp)
+#else
+# error "jcgocrash.c: unsupported architecture"
+#endif
+
 static const char *jcgo_crash_exception_name(DWORD code)
 {
     switch (code) {
@@ -143,12 +160,8 @@ static void jcgo_crash_dump(EXCEPTION_POINTERS *ep)
         IMAGEHLP_LINE64 line;
         DWORD lineDisp;
         IMAGEHLP_MODULE64 mi;
-        DWORD64 imageBase;
-        PRUNTIME_FUNCTION rf;
-        PVOID handlerData;
-        DWORD64 establisherFrame;
 
-        pc = ctx.Rip;
+        pc = JCGO_CRASH_IP(ctx);
         if (pc == 0) break;
         symName = "?";
         disp = 0;
@@ -197,21 +210,33 @@ static void jcgo_crash_dump(EXCEPTION_POINTERS *ep)
             prev_count = 0;
         }
 
-        imageBase = 0;
-        rf = RtlLookupFunctionEntry(pc, &imageBase, NULL);
-        if (!rf) {
-            DWORD64 *rsp = (DWORD64 *)ctx.Rsp;
-            if (!rsp) break;
-            ctx.Rip = *rsp;
-            ctx.Rsp += 8;
+#if JCGO_CRASH_HAS_UNWIND
+        {
+            DWORD64 imageBase = 0;
+            PRUNTIME_FUNCTION rf;
+            PVOID handlerData;
+            DWORD64 establisherFrame;
+            rf = RtlLookupFunctionEntry(pc, &imageBase, NULL);
+            if (!rf) {
+                DWORD64 *rsp = (DWORD64 *)ctx.Rsp;
+                if (!rsp) break;
+                ctx.Rip = *rsp;
+                ctx.Rsp += 8;
+                if (ctx.Rip == 0) break;
+                continue;
+            }
+            handlerData = NULL;
+            establisherFrame = 0;
+            RtlVirtualUnwind(0 /* UNW_FLAG_NHANDLER */, imageBase, pc, rf,
+                             &ctx, &handlerData, &establisherFrame, NULL);
             if (ctx.Rip == 0) break;
-            continue;
         }
-        handlerData = NULL;
-        establisherFrame = 0;
-        RtlVirtualUnwind(0 /* UNW_FLAG_NHANDLER */, imageBase, pc, rf,
-                         &ctx, &handlerData, &establisherFrame, NULL);
-        if (ctx.Rip == 0) break;
+#else
+        /* x86: stop after the first frame. RtlLookupFunctionEntry /
+         * RtlVirtualUnwind aren't available; a StackWalk64 path could
+         * be added here later if x86 builds need richer traces. */
+        break;
+#endif
     }
     SymCleanup(proc);
     fflush(stderr);
@@ -261,7 +286,7 @@ static void jcgo_crash_abort_signal(int sig)
     RtlCaptureContext(&ctx);
     ZeroMemory(&er, sizeof(er));
     er.ExceptionCode = (DWORD)0xC0000027;
-    er.ExceptionAddress = (PVOID)ctx.Rip;
+    er.ExceptionAddress = (PVOID)(SIZE_T)JCGO_CRASH_IP(ctx);
     ep.ExceptionRecord = &er;
     ep.ContextRecord = &ctx;
     jcgo_crash_filter(&ep);
