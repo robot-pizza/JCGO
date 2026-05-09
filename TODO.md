@@ -30,12 +30,6 @@ The bar is "works at least as well as Android's ART runtime", not
 OpenJDK parity. Code that already runs on Android shouldn't have to
 change to run through JCGO.
 
-- [ ] **Charset support on non-Win32.** Win32 path routes through
-  MultiByteToWideChar / WideCharToMultiByte (8d9df1f). Linux / macOS
-  / Android need an iconv (or ICU) implementation in
-  `include/jcgoiconv.c` to provide the same charsets. The Java side
-  works as-is; only the C side's `#ifdef JCGO_WIN32` block needs a
-  Linux counterpart calling iconv_open / iconv / iconv_close.
 - [ ] **`java.lang.management` Android subset.** Android stubs
   `ManagementFactory.getRuntimeMXBean()` (returns "<pid>@<host>"-style
   ID), `getThreadMXBean()` (basic `getThreadCount`, `getAllThreadIds`,
