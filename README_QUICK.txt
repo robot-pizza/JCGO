@@ -31,7 +31,7 @@ gcc -IC:\JCGO\include -IC:\JCGO\include\boehmgc -IC:\JCGO\native -DJCGO_FFDATA -
 
 - or invoke Visual Studio C/C++ compiler:
 
-cl -IC:\JCGO\include -IC:\JCGO\include\boehmgc -IC:\JCGO\native -DJCGO_INTNN -DJCGO_FFDATA -DJCGO_WIN32 -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE jcgo_Out\Main.c C:\JCGO\libs\x86\msvc\gc.lib /link /out:hello.exe
+cl -IC:\JCGO\include -IC:\JCGO\include\boehmgc -IC:\JCGO\native -MT -DJCGO_INTNN -DJCGO_FFDATA -DJCGO_WIN32 -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE jcgo_Out\Main.c C:\JCGO\libs\x86\msvc\gc.lib /link /out:hello.exe
 
 - run "hello.exe" file.
 

@@ -4,8 +4,8 @@
 @rem * Microsoft (R) C/C++ Optimizing Compiler Version 15+ for x64
 @rem * Microsoft Windows SDK for Windows 7 and .NET Framework 3.5+
 @rem * cd <path_to_jcgo>
-@rem * (cd contrib; curl http://www.hboehm.info/gc/gc_source/gc-7.4.0.tar.gz | tar zxf -; mv gc-7.4.0 bdwgc)
-@rem * (cd contrib/bdwgc; curl http://www.hboehm.info/gc/gc_source/libatomic_ops-7.4.0.tar.gz | tar zxf -; mv libatomic_ops-7.4.0 libatomic_ops)
+@rem * (cd contrib; curl -L https://github.com/ivmai/bdwgc/releases/download/v8.2.8/gc-8.2.8.tar.gz | tar zxf -; mv gc-8.2.8 bdwgc)
+@rem * (cd contrib/bdwgc; curl -L https://github.com/ivmai/libatomic_ops/releases/download/v7.8.4/libatomic_ops-7.8.4.tar.gz | tar zxf -; mv libatomic_ops-7.8.4 libatomic_ops)
 @rem * set INCLUDE=<path_to_vc>\include;<path_to_winsdk>\Include
 @rem * set LIB=<path_to_vc>\lib\amd64;<path_to_winsdk>\Lib\x64
 
@@ -15,19 +15,12 @@
 @set BASESYS=win32
 @set SYST=msvc
 
-@rem Build BDWGC static single-threaded libraries:
+@rem Build BDWGC static multi-threaded library (gc.lib):
 mkdir libs\%ARCH%\%SYST%
 mkdir .build_tmp\libs-gc-%ARCH%-%SYST%
 cd .build_tmp\libs-gc-%ARCH%-%SYST%
-%CC% -Ox -W4 -wd4100 -wd4127 -GF -DALL_INTERIOR_POINTERS -DJAVA_FINALIZATION -DGC_GCJ_SUPPORT -DNO_DEBUGGING -DDONT_USE_USER32_DLL -I..\..\contrib\bdwgc\include -D_CRT_SECURE_NO_DEPRECATE -wd4565 -Zl -c ..\..\contrib\bdwgc\*.c ..\..\contrib\bdwgc\*.cpp /nologo || exit /b 1
-%AR% /machine:%ARCH% /out:..\..\libs\%ARCH%\%SYST%\gc.lib *.obj /nologo || exit /b 1
-cd ..\..
-
-@rem Build BDWGC static multi-threaded libraries:
-mkdir .build_tmp\libs-gcmt-%ARCH%-%SYST%
-cd .build_tmp\libs-gcmt-%ARCH%-%SYST%
 %CC% -Ox -W4 -wd4100 -wd4127 -GF -MT -DALL_INTERIOR_POINTERS -DJAVA_FINALIZATION -DGC_GCJ_SUPPORT -DNO_DEBUGGING -DLARGE_CONFIG -DUSE_MUNMAP -DGC_THREADS -DTHREAD_LOCAL_ALLOC -DPARALLEL_MARK -DDONT_USE_USER32_DLL -I..\..\contrib\bdwgc\include -I..\..\contrib\bdwgc\libatomic_ops\src -D_CRT_SECURE_NO_DEPRECATE -wd4565 -Zl -c ..\..\contrib\bdwgc\*.c ..\..\contrib\bdwgc\*.cpp /nologo || exit /b 1
-%AR% /machine:%ARCH% /out:..\..\libs\%ARCH%\%SYST%\gcmt.lib *.obj /nologo || exit /b 1
+%AR% /machine:%ARCH% /out:..\..\libs\%ARCH%\%SYST%\gc.lib *.obj /nologo || exit /b 1
 cd ..\..
 
 @rem Build BDWGC dynamic library (multi-threaded):
