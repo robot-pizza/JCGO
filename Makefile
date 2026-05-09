@@ -12,10 +12,12 @@ win32-msvc:
 win64-msvc:
 	cmd /c "mkjcgo\build-win64-msvc.bat"
 
-# Build the translator (jcgo.jar + auxbin/jre/*.jar). Pure Java; no
-# arch distinction. Requires bash on PATH (Git Bash, MSYS2, or WSL).
+# Build the translator .jars (jcgo.jar + auxbin/jre/*.jar). Pure
+# Java; no arch distinction. Runs entirely in PowerShell so no bash
+# is required. mkjcgo/build-java.sh remains for the full chain
+# (rflg_out + translated C output) on Unix-like hosts.
 jcgo-jar:
-	bash mkjcgo/build-java.sh
+	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\build-jars.ps1
 
 # Package the release. Stages artifacts under dist/jcgo-binaries-windows/
 # and zips them. Doesn't depend on the build targets — verifies inputs
@@ -55,7 +57,7 @@ help:
 	@echo   win64-msvc        Build amd64 (64-bit) MSVC runtime libs and DLLs.
 	@echo                     Output: libs/amd64/msvc/, dlls/amd64/win32/
 	@echo   jcgo-jar          Build jcgo.jar + auxbin/jre/*.jar (translator).
-	@echo                     Requires bash on PATH.
+	@echo                     Pure PowerShell; needs javac/jar on PATH.
 	@echo   zip               Package dist/jcgo-binaries-windows.zip from
 	@echo                     existing build artifacts.
 	@echo   release           jcgo-jar + all + zip (end-to-end).

@@ -34,8 +34,9 @@ $Required = @(
 $Missing = $Required | Where-Object { -not (Test-Path $_) }
 if ($Missing) {
     Write-Error ("Missing build artifacts:`n  " + ($Missing -join "`n  ") + `
-        "`n`nRun 'bash mkjcgo/build-java.sh' for jcgo.jar/auxbin," + `
-        "`nand 'make all' for the libs/ + dlls/ contents.")
+        "`n`nRun 'make jcgo-jar' for jcgo.jar/auxbin," + `
+        "`nand 'make all' for the libs/ + dlls/ contents." + `
+        "`n(Or 'make release' to do all of the above + zip in one shot.)")
     exit 1
 }
 
