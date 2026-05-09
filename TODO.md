@@ -38,7 +38,7 @@ probes RuntimeMXBean.getName / getUptime, ThreadMXBean.getThreadCount,
 MemoryMXBean.getHeapMemoryUsage). The remaining gaps are per-method,
 with stubs returning null/0/empty in place of real data.
 
-**Tier 1 — frequently used, JCGO returns broken values:**
+**Crashing user code (must fix):**
 
 - [ ] `ThreadMXBean.getThreadInfo(long)` — `jcgogmt.c`
   `getThreadInfoForId0` is a stub returning null. User code calling
@@ -46,37 +46,78 @@ with stubs returning null/0/empty in place of real data.
   populated `ThreadInfo` with name/id/state/stack trace.
 - [ ] `ThreadMXBean.dumpAllThreads()` — depends on getThreadInfo;
   same gap.
+
+**Misleading values (lies about CPU time):**
+
 - [ ] `ThreadMXBean.getThreadCpuTime(long)` /
   `getThreadUserTime(long)` — always 0 (`jcgogmt.c`
-  `getThreadCpuUserTime0` stub). On Linux a real impl reads
-  `/proc/self/task/<tid>/stat`; on Win32, `GetThreadTimes`.
-- [ ] `ThreadMXBean.findDeadlockedThreads()` /
-  `findMonitorDeadlockedThreads()` — empty array.
-- [ ] `RuntimeMXBean.getInputArguments()` — empty `String[]`
-  (`jcgogmr.c` stub). Apps reading `-D` properties or VM flags see
-  nothing.
+  `getThreadCpuUserTime0` stub). Either implement (Win32
+  `GetThreadTimes`, Linux `/proc/self/task/<tid>/stat`) or wire
+  `isThreadCpuTimeSupported()` to return `false` so callers know.
 
-**Tier 2 — less common, currently misleading:**
+**Honest answers (return value already conveys "not supported"):**
 
-- [ ] `MemoryMXBean.getNonHeapMemoryUsage()` — returns
-  `MemoryUsage(0, 0, 0, 0)` (`jcgogmm.c` `getNonHeapMemoryUsage0`
-  stub returns 0-fill).
-- [ ] `MemoryMXBean.getObjectPendingFinalizationCount()` — 0 stub.
-- [ ] `OperatingSystemMXBean.getSystemLoadAverage()` — 0.0 stub
-  (`jcgogms.c`). Should return -1.0 per JLS to mean "unknown".
-- [ ] `GarbageCollectorMXBean.getCollectionTime(name)` — stub
-  (`jcgogmg.c`). Count works (`getCollectionCount` via
-  `JCGO_MEM_GCGETCOUNT`) but cumulative time doesn't.
+These return -1 / 0 / empty in a way that's a legitimate "not
+supported / unknown" response. No fix needed unless we plumb through
+real values:
 
-**Tier 3 — niche, OK to leave stubbed:**
+- `OperatingSystemMXBean.getSystemLoadAverage()` returns -1.0 (JLS
+  "unknown") — already correct.
+- `RuntimeMXBean.getInputArguments()` returns empty `String[]` —
+  honest: JCGO has no JVM args, just main's argv.
+- `MemoryMXBean.getNonHeapMemoryUsage()` returns
+  `MemoryUsage(0, 0, 0, 0)` — valid per JLS.
+- `MemoryMXBean.getObjectPendingFinalizationCount()` returns 0 —
+  honest: BDWGC runs finalizers eagerly, no queue.
+- `ThreadMXBean.findDeadlockedThreads` /
+  `findMonitorDeadlockedThreads()` returns empty array — honest:
+  no deadlocks detected (since JCGO doesn't track).
+- `GarbageCollectorMXBean.getCollectionTime` returns 0 — honest:
+  BDWGC doesn't track cumulative pause time.
+- `ClassLoadingMXBean.getUnloadedClassCount` returns 0 — correct:
+  whole-program codegen, no unloading.
+- `CompilationMXBean.getTotalCompilationTime` returns 0 —
+  correct: no JIT.
+- `MemoryPoolMXBean.*` mostly stubbed — pools are
+  JIT/generational concepts that don't map to BDWGC.
 
-- `ClassLoadingMXBean.getUnloadedClassCount` — 0 (JCGO doesn't
-  unload). Correct for whole-program codegen.
-- `CompilationMXBean.getTotalCompilationTime` — 0 (no JIT).
-  Correct.
-- `MemoryPoolMXBean.*` — most are stubs. Pools are
-  JIT/generational concepts that don't map well to BDWGC; Android
-  has them but the values are mostly placeholders too.
+### Test coverage gaps
+
+These features are claimed-done but the e2e fixture exercises only
+narrow shapes. Real users will hit edge cases. Widen the fixture
+before declaring full confidence.
+
+- [ ] **Annotation member defaults** — only `int` + `String`
+  defaults tested. Untested: `Class<X> default Foo.class`,
+  `enum default X.RED`, brace-array defaults like
+  `int[] default {1, 2, 3}`, nested-annotation defaults like
+  `Spec default @Spec(value="x")`.
+- [ ] **`Constructor.getParameterAnnotations()`** — code is
+  symmetric to `Method.getParameterAnnotations` and is wired in
+  `Constructor.java`, but the e2e fixture only invokes the Method
+  variant. Add a fixture with a constructor that has annotated
+  parameters and reflect over it.
+- [ ] **`@interface` const declarations** — `int` + `String`
+  constants tested. Untested: `Class<?>` constants
+  (`Class<? extends Foo> KIND = Foo.class;`) and array constants
+  (`int[] LIMITS = {1, 2, 3};`).
+- [ ] **`@Inherited` walk** — only 2-level (Parent → Child).
+  Multi-level (Grandparent → Parent → Child) and inheritance via
+  interface chain (an annotation on an interface I, where C extends
+  another class that implements I) untested.
+- [ ] **Repeating annotations** — only `String value()` shape
+  tested via `@Tag("alpha") @Tag("beta")`. Untested: repeating
+  annotations with multiple members
+  (`@Score(value="x", level=3) @Score(value="y", level=4)`),
+  and the auto-wrap into a `@Repeatable` container's `value()`.
+- [ ] **Cross-bound method dispatch** — 2-bound case
+  (`<X extends Number & Comparable>`) tested. Untested: 3+ bounds
+  (`<X extends A & B & C>` with method on C), cross-bound dispatch
+  through a receiver that's a field access rather than a local
+  parameter. Receiver-separated form (vecSize==0 retry path in
+  MethodInvocation) is wired but not e2e-tested -- normal `a.x()`
+  parses path-style, so this branch only fires in less-common
+  expression-receiver shapes.
 
 ### Won't do
 
