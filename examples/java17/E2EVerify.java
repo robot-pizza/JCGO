@@ -174,6 +174,35 @@ public class E2EVerify {
     System.out.println("Shift_JIS round-trip == original = "
         + original.equals(roundTrip));
 
+    // Probe java.lang.management baseline.
+    try {
+      java.lang.management.RuntimeMXBean rmx =
+          java.lang.management.ManagementFactory.getRuntimeMXBean();
+      System.out.println("rmx.getName != null = "
+          + (rmx.getName() != null));
+      System.out.println("rmx.getUptime >= 0 = "
+          + (rmx.getUptime() >= 0));
+    } catch (Throwable t) {
+      System.out.println("RuntimeMXBean: " + t.getClass().getName());
+    }
+    try {
+      java.lang.management.ThreadMXBean tm =
+          java.lang.management.ManagementFactory.getThreadMXBean();
+      System.out.println("tm.getThreadCount > 0 = "
+          + (tm.getThreadCount() > 0));
+    } catch (Throwable t) {
+      System.out.println("ThreadMXBean: " + t.getClass().getName());
+    }
+    try {
+      java.lang.management.MemoryMXBean mm =
+          java.lang.management.ManagementFactory.getMemoryMXBean();
+      java.lang.management.MemoryUsage h = mm.getHeapMemoryUsage();
+      System.out.println("mm.heap.used > 0 = " + (h.getUsed() > 0));
+      System.out.println("mm.heap.max > 0 = " + (h.getMax() > 0));
+    } catch (Throwable t) {
+      System.out.println("MemoryMXBean: " + t.getClass().getName());
+    }
+
     System.out.println("WithConsts.LIMIT = " + WithConsts.LIMIT);
     System.out.println("WithConsts.LABEL = " + WithConsts.LABEL);
     java.lang.reflect.Field limitField =
