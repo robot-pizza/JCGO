@@ -113,6 +113,13 @@ final class ClassDictionary {
 
     boolean verboseTracing;
 
+    // Emit `#line N "Foo.java"` pragmas in the generated C so DWARF /
+    // PDB carry the original Java source positions. Default on; the
+    // `-no-line-info` CLI flag disables it (sometimes user wants the
+    // C-level lines for debugging the translator's output rather
+    // than the Java original).
+    boolean emitLineInfo = true;
+
     boolean ignoreErrs;
 
     String outPath = "";

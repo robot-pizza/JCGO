@@ -237,26 +237,35 @@ final class MethodInvocation extends LexNode {
                     terms[2].getSignature());
             resultClass = aclass;
             md = aclass.matchMethod(msig, c.forClass);
-            if (md == null && vecSize == 2 && terms[0] instanceof QualifiedName) {
-                // TODO #10: path-style `a.method(args)` where `a` was a
-                // multi-bound type-var-typed variable. Rewrite to
-                // `((Bound) a).method(args)`: replace terms[0] with
-                // CastExpression around the receiver-name segment and
-                // let the rest of the branch2 + common post-match
+            if (md == null && vecSize >= 2 && terms[0] instanceof QualifiedName) {
+                // TODO #10: path-style `a.method(args)` where `a` (or a
+                // dotted-field chain like `a.b.c`) is a multi-bound
+                // type-var-typed variable / field. Rewrite to
+                // `((Bound) <receiverPath>).method(args)`: replace
+                // terms[0] with a CastExpression wrapping the receiver
+                // path (everything except the trailing method segment)
+                // and let the rest of the branch2 + common post-match
                 // logic carry on. The state changes (aclass, resultClass,
                 // actualType0, actualClass) match what the equivalent
                 // 3-arg form would produce, including the
                 // actualClass.getSameMethod(md) fallback that updates
                 // actualClass back to the interface bound -- this is
-                // what causes Comparable to be marked used and the
-                // VFUNC dispatch path to fire.
+                // what causes the secondary bound to be marked used and
+                // the VFUNC dispatch path to fire. For vecSize == 2 the
+                // receiver path is a single segment (a local variable);
+                // for vecSize >= 3 the receiver path is a dotted field
+                // chain (e.g. `holder.val`).
                 QualifiedName qn = (QualifiedName) terms[0];
-                String rcvName = qn.terms[0].dottedName();
-                ClassDefinition altClass = trySecondaryBoundsForName(
-                        rcvName, c, msig);
+                // QualifiedName chain layout: terms[0] is the head path
+                // (recursive QualifiedName for multi-segment, or LexTerm
+                // for a single segment), terms[1] is the last-segment
+                // LexTerm. Drop the last by using terms[0] directly.
+                Term receiverPath = qn.terms[0];
+                String rcvName = receiverPath.dottedName();
+                ClassDefinition altClass = rcvName == null ? null
+                        : trySecondaryBoundsForName(rcvName, c, msig);
                 if (altClass != null) {
-                    Term receiverExpr = new Expression(
-                            new QualifiedName(qn.terms[0], Empty.newTerm()));
+                    Term receiverExpr = new Expression(receiverPath);
                     Term castReceiver = new CastExpression(
                             new ClassOrIfaceType(altClass), receiverExpr);
                     terms[0] = castReceiver;
@@ -1246,7 +1255,7 @@ final class MethodInvocation extends LexNode {
     private static ClassDefinition trySecondaryBoundsForName(
             String varName, Context c, MethodSignature msig) {
         if (varName == null || c.currentMethod == null) return null;
-        VariableDefinition rcv = c.currentMethod.getLocalVar(varName);
+        VariableDefinition rcv = resolvePathToVarDef(varName, c);
         if (rcv == null) return null;
         String secs = rcv.getMultiBoundSecondaries();
         if (secs == null || secs.length() == 0) return null;
@@ -1265,6 +1274,43 @@ final class MethodInvocation extends LexNode {
             start = amp + 1;
         }
         return null;
+    }
+
+    /**
+     * Resolve a dotted path to the VariableDefinition of its last segment.
+     * For a single-id path returns the local variable directly; for a
+     * dotted path walks each segment as a field access, threading the
+     * receiver type forward. Used so cross-bound retry can find
+     * secondaries on a field-access receiver like `h.val.method()`,
+     * not just on a single-name local.
+     */
+    private static VariableDefinition resolvePathToVarDef(String dotted,
+            Context c) {
+        if (dotted == null || dotted.length() == 0) return null;
+        if (dotted.indexOf('.') < 0) {
+            return c.currentMethod.getLocalVar(dotted);
+        }
+        int dot = dotted.indexOf('.');
+        String head = dotted.substring(0, dot);
+        VariableDefinition v = c.currentMethod.getLocalVar(head);
+        if (v == null) return null;
+        ExpressionType type = v.exprType();
+        int start = dot + 1;
+        while (start <= dotted.length()) {
+            int next = dotted.indexOf('.', start);
+            String seg = next < 0 ? dotted.substring(start)
+                    : dotted.substring(start, next);
+            if (type == null) return null;
+            ClassDefinition cd = type.signatureClass();
+            if (cd == null) return null;
+            VariableDefinition fld = cd.getField(seg, c.forClass);
+            if (fld == null) return null;
+            v = fld;
+            type = fld.exprType();
+            if (next < 0) break;
+            start = next + 1;
+        }
+        return v;
     }
 
     private static ClassDefinition resolveSecondaryBound(String name,

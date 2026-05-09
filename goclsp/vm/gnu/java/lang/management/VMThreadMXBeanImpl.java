@@ -41,6 +41,7 @@
 package gnu.java.lang.management;
 
 import java.lang.management.ThreadInfo;
+import java.lang.reflect.Constructor;
 
 final class VMThreadMXBeanImpl
 {
@@ -126,7 +127,78 @@ final class VMThreadMXBeanImpl
 
  static ThreadInfo getThreadInfoForId(long id, int maxDepth)
  {
-  return (ThreadInfo) getThreadInfoForId0(id);
+  Thread[] threads = getAllThreads();
+  Thread target = null;
+  for (int i = 0; i < threads.length; i++)
+  {
+   if (threads[i] != null && threads[i].getId() == id)
+   {
+    target = threads[i];
+    break;
+   }
+  }
+  if (target == null)
+   return null;
+  // For the current thread we can synthesize the trace via a
+  // throwaway Throwable -- VMThrowable.fillInStackTrace walks the
+  // calling thread. Calling target.getStackTrace() directly would
+  // re-enter ManagementFactory.getThreadMXBean().getThreadInfo(...)
+  // since classpath's Thread.getStackTrace delegates to the bean,
+  // so we never go through that. For arbitrary other threads JCGO's
+  // runtime can't suspend-and-walk yet -- empty trace.
+  StackTraceElement[] trace;
+  if (target == Thread.currentThread())
+  {
+   trace = new Throwable().getStackTrace();
+  }
+  else
+  {
+   trace = new StackTraceElement[0];
+  }
+  if (maxDepth >= 0 && trace.length > maxDepth)
+  {
+   StackTraceElement[] truncated = new StackTraceElement[maxDepth];
+   System.arraycopy(trace, 0, truncated, 0, maxDepth);
+   trace = truncated;
+  }
+  // ThreadInfo has only private constructors. Reflect the 13-arg
+  // form so we can populate it from the live thread without
+  // patching classpath. setAccessible(true) is JCGO no-op friendly.
+  try
+  {
+   Constructor ctor = ThreadInfo.class.getDeclaredConstructor(
+        new Class[] { Long.TYPE, String.class, String.class,
+            Long.TYPE, Long.TYPE, String.class,
+            Long.TYPE, String.class,
+            Long.TYPE, Long.TYPE,
+            Boolean.TYPE, Boolean.TYPE,
+            StackTraceElement[].class });
+   ctor.setAccessible(true);
+   Object state = target.getState();
+   String stateName;
+   try
+   {
+    java.lang.reflect.Method nameM = state == null ? null
+              : state.getClass().getMethod("name", new Class[0]);
+    stateName = nameM == null ? "RUNNABLE"
+              : (String) nameM.invoke(state, new Object[0]);
+   }
+   catch (Throwable st)
+   {
+    stateName = "RUNNABLE";
+   }
+   return (ThreadInfo) ctor.newInstance(new Object[] {
+        Long.valueOf(target.getId()), target.getName(),
+        stateName,
+        Long.valueOf(0L), Long.valueOf(0L), null,
+        Long.valueOf(-1L), null,
+        Long.valueOf(0L), Long.valueOf(0L),
+        Boolean.FALSE, Boolean.FALSE, trace });
+  }
+  catch (Throwable t)
+  {
+   return null;
+  }
  }
 
  static long getThreadUserTime(long id)

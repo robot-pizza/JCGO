@@ -135,6 +135,11 @@ final class ConstrDeclaration extends LexNode {
         if (paramAnnos != null) {
             md.setParameterAnnotationLists(paramAnnos);
         }
+        ObjVector paramAnnoArgs = MethodDeclaration
+                .collectParamAnnotationArgs(terms[1]);
+        if (paramAnnoArgs != null) {
+            md.setParameterAnnotationArgsLists(paramAnnoArgs);
+        }
         c.hasConstructor = true;
     }
 

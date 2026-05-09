@@ -4742,7 +4742,8 @@ d : new PrimaryFieldAccess(a, c));
 			} else {
 				elemType = SimpleType();
 			}
-			if (t.kind == 43) { DimSpecSeq(); }
+			Term preDim = Empty.newTerm();
+			if (t.kind == 43) { preDim = DimSpecSeq(); }
 			Term elemName = Identifier();
 			if (t.kind == 11) {
 				Expect(11);
@@ -4756,7 +4757,7 @@ d : new PrimaryFieldAccess(a, c));
 				}
 				Expect(9);
 				MethodDeclaration method = new MethodDeclaration(elemType,
-					Empty.newTerm(), elemName, Empty.newTerm(), postDim,
+					preDim, elemName, Empty.newTerm(), postDim,
 					Empty.newTerm(), new Block());
 				if (defaultText != null && defaultText.length() > 0) {
 					annotationDefaultsByDecl.put(method, defaultText);
@@ -4777,7 +4778,7 @@ d : new PrimaryFieldAccess(a, c));
 				Expect(9);
 				Term varDeclr = new VariableDeclarator(
 					new VariableIdentifier(elemName), Empty.newTerm(), init);
-				Term field = new FieldDeclaration(elemType, Empty.newTerm(),
+				Term field = new FieldDeclaration(elemType, preDim,
 					varDeclr);
 				Term constMods = new Seq(new AccModifier(AccModifier.PUBLIC),
 					new Seq(new AccModifier(AccModifier.STATIC),

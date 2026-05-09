@@ -969,6 +969,32 @@ final class MethodDefinition {
         return ourClass.routineNameOf(csign());
     }
 
+    /**
+     * Pick a Term whose lineNum approximates the method's source line
+     * for #line emit. Block-typed bodies have lineNum == line of the
+     * closing `}` (set at parse-end), so use the FIRST statement's line
+     * if we can find one — that's much closer to the method header.
+     * Falls back to the body itself for empty / single-statement
+     * methods, then to the paramList.
+     */
+    private Term methodAnchorForLineDirective() {
+        if (body instanceof Block) {
+            Term inner = ((Block) body).terms[1];
+            Term first = firstStatementTerm(inner);
+            if (first != null && first.getLineNum() > 0) return first;
+        }
+        if (body != null && body.getLineNum() > 0) return body;
+        if (paramList != null && paramList.getLineNum() > 0) return paramList;
+        return null;
+    }
+
+    private static Term firstStatementTerm(Term t) {
+        while (t instanceof Seq) {
+            t = ((Seq) t).terms[0];
+        }
+        return t != null && !(t instanceof Empty) ? t : null;
+    }
+
     String stackObjRetRoutineCName() {
         Term.assertCond(stackObjRetRequired);
         referenced = true;
@@ -1528,6 +1554,24 @@ final class MethodDefinition {
                 oc.cAndHPrint(" )");
                 oc.hPrint(";");
             } else {
+                // #line directive so DWARF/PDB anchors this method to
+                // its original Java source location -- crash dumps +
+                // addr2line / SymGetLineFromAddr64 map back to
+                // (Foo.java, line N) instead of the .c file.
+                // Suppressed when -no-line-info was passed.
+                //
+                // Emit BEFORE the function definition: MSVC's PDB stores
+                // each function's anchor line as <last #line> + (C-line
+                // delta), so a pragma after `{` would attribute the
+                // function-entry address to the previous method's
+                // trailing line. Emitting before resets the counter so
+                // the entry maps to the body-start.
+                if (Main.dict.emitLineInfo) {
+                    oc.currentJavaSourceFile = ourClass.getJavaSourceFile();
+                    oc.resetLineTracking();
+                    Term anchor = methodAnchorForLineDirective();
+                    if (anchor != null) oc.emitLineDirective(anchor);
+                }
                 oc.cPrint(sb.toString());
             }
             oc.cPrint("{");

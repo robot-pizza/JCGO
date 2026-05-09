@@ -223,7 +223,7 @@ final class MethodDeclaration extends LexNode {
         return false;
     }
 
-    private static ObjVector collectParamAnnotationArgs(Term paramList) {
+    static ObjVector collectParamAnnotationArgs(Term paramList) {
         if (paramList == null || !paramList.notEmpty()) return null;
         ObjVector out = new ObjVector();
         boolean anyArgs = collectParamAnnotationArgsInto(paramList, out);

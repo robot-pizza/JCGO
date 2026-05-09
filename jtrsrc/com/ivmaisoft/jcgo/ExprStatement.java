@@ -92,6 +92,7 @@ final class ExprStatement extends LexNode {
     }
 
     void processOutput(OutputContext oc) {
+        oc.emitLineDirective(this);
         terms[0].setVoidExpression();
         terms[0].processOutput(oc);
         oc.cPrint(";");

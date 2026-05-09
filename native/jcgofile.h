@@ -1318,9 +1318,20 @@ struct jcgo_tfind_s
 /* int _wfindnext(long, struct _wfinddata_t *); */
 #endif
 
+/* MS CRT's _findfirst returns intptr_t, which is 64-bit on Win64;
+ * the original `long handle` here truncates the upper 32 bits and
+ * the resulting "handle" is junk that crashes _findnext inside
+ * RtlEnterCriticalSection. mingw-w64 has historically masked this
+ * by assigning small handle indices that survive the truncation,
+ * but MSVC's UCRT hands out full 64-bit pointer-shaped handles.
+ * Use intptr_t to round-trip correctly on both. */
 struct jcgo_tfind_s
 {
+#ifdef _MSC_VER
+ intptr_t handle;
+#else
  long handle;
+#endif
 #ifdef JCGO_SYSWCHAR
  struct _wfinddata_t data;
 #else
@@ -1328,8 +1339,16 @@ struct jcgo_tfind_s
 #endif
 };
 
+#ifdef _MSC_VER
+#define JCGO_TFIND_HANDLE_T intptr_t
+#define JCGO_TFIND_HANDLE_INVALID ((intptr_t)-1)
+#else
+#define JCGO_TFIND_HANDLE_T long
+#define JCGO_TFIND_HANDLE_INVALID (-1L)
+#endif
+
 #define JCGO_TFIND_T struct jcgo_tfind_s
-#define JCGO_TFIND_FIRST(pfinddata, pathname) (((pfinddata)->handle = (long)JCGO_JNUTCHAR_E(_findfirst(JCGO_JNUTCHAR_C(pathname), JCGO_JNUTCHAR_R(struct _finddata_t, &(pfinddata)->data)), _wfindfirst(pathname, &(pfinddata)->data))) != -1L ? 0 : -1)
+#define JCGO_TFIND_FIRST(pfinddata, pathname) (((pfinddata)->handle = (JCGO_TFIND_HANDLE_T)JCGO_JNUTCHAR_E(_findfirst(JCGO_JNUTCHAR_C(pathname), JCGO_JNUTCHAR_R(struct _finddata_t, &(pfinddata)->data)), _wfindfirst(pathname, &(pfinddata)->data))) != JCGO_TFIND_HANDLE_INVALID ? 0 : -1)
 #define JCGO_TFIND_NEXT(pfinddata) JCGO_JNUTCHAR_E(_findnext((pfinddata)->handle, JCGO_JNUTCHAR_R(struct _finddata_t, &(pfinddata)->data)), _wfindnext((pfinddata)->handle, &(pfinddata)->data))
 #define JCGO_TFIND_ISHIDDEN(pfinddata) ((JCGO_JNUTCHAR_E(JCGO_JNUTCHAR_R(struct _finddata_t, &(pfinddata)->data)->attrib, (pfinddata)->data.attrib) & _A_HIDDEN) != 0)
 #define JCGO_TFIND_GETNAME(pfinddata) JCGO_JNUTCHAR_E(JCGO_JNUTCHAR_R(JCGO_JNUTCHAR_T, JCGO_JNUTCHAR_R(struct _finddata_t, &(pfinddata)->data)->name), (pfinddata)->data.name)

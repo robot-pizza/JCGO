@@ -86,6 +86,34 @@ final class OutputContext {
         }
     }
 
+    private int lastEmittedJavaLine = 0;
+    String currentJavaSourceFile;
+
+    /**
+     * Emit a `#line N "Foo.java"` directive if line tracking is on,
+     * we know the current Java file, and we haven't already emitted
+     * this same line since the last differing one. Suppresses noise —
+     * repeated identical directives don't hurt correctness but bloat
+     * output. Called from per-statement processOutputs to give
+     * DWARF / PDB statement-level granularity.
+     */
+    void emitLineDirective(Term t) {
+        if (!Main.dict.emitLineInfo) return;
+        if (t == null || currentJavaSourceFile == null) return;
+        int n = t.getLineNum();
+        if (n <= 0 || n == lastEmittedJavaLine) return;
+        lastEmittedJavaLine = n;
+        cPrint("\n#line ");
+        cPrint(Integer.toString(n));
+        cPrint(" \"");
+        cPrint(currentJavaSourceFile);
+        cPrint("\"\n");
+    }
+
+    void resetLineTracking() {
+        lastEmittedJavaLine = 0;
+    }
+
     void hPrint(String s) {
         Term.assertCond(hStream != null);
         hStream.print(s);

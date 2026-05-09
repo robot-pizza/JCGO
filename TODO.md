@@ -21,15 +21,24 @@ change to run through JCGO.
 
 ### Method-reference once-eval semantics
 
-- [ ] `(expr)::method` re-evaluates the receiver expression on each
-  SAM invocation. Java spec says evaluate once at lambda-creation
-  time. Side-effecting receivers like `(getStream())::onNext`
-  observably differ from javac. Fix: capture-via-constructor — give
-  the synthesized anonymous class a final field of the receiver's
-  type, populate via a constructor arg at creation, and have the
-  SAM body read the field instead of re-running the expression.
-  Most user code uses pure receivers (casts, field accesses) and
-  doesn't notice; this is for spec compliance.
+- [x] **Cast-expression receivers** (`((SomeType) expr)::method`).
+  `MethodReference.processPass1` now extracts the cast type
+  syntactically (no early pass1 of the receiver — that would bind
+  free names against the outer scope and block JCGO's anon-class
+  capture), synthesizes a `private final SomeType $mref$rcv =
+  <receiver>;` field on the lifted class, and rewrites the SAM
+  body to read the field instead of re-evaluating. Field
+  initializer runs once at construction, JLS 15.13.3 compliant.
+  E2EVerify exercises observably: a counter-bumping side-effecting
+  receiver wrapped in a cast, two SAM calls, counter = 1.
+- [ ] **Method-call receivers** (`(getStream())::onNext`). The
+  receiver's static type isn't syntactically derivable without
+  pass1, and pass1ing in the outer context binds free names there,
+  blocking the anon-class capture machinery from re-binding them
+  inside the lifted class. So this shape still re-evaluates the
+  expression per SAM call. A real fix needs either an idempotent
+  re-pass1 in inner context, or a synthesized helper-method on
+  the enclosing class that takes the receiver as a parameter.
 
 ### `java.lang.management` Android subset
 
@@ -40,20 +49,31 @@ with stubs returning null/0/empty in place of real data.
 
 **Crashing user code (must fix):**
 
-- [ ] `ThreadMXBean.getThreadInfo(long)` — `jcgogmt.c`
-  `getThreadInfoForId0` is a stub returning null. User code calling
-  `info.getThreadId()` / `info.getStackTrace()` NPEs. Fix needs a
-  populated `ThreadInfo` with name/id/state/stack trace.
-- [ ] `ThreadMXBean.dumpAllThreads()` — depends on getThreadInfo;
-  same gap.
+- [x] `ThreadMXBean.getThreadInfo(long)` —
+  `VMThreadMXBeanImpl.getThreadInfoForId` now finds the live
+  Thread by id and reflects ThreadInfo's private 13-arg
+  constructor to populate id/name/state. Native stub
+  `getThreadInfoForId0` in `jcgogmt.c` is now unreferenced.
+- [x] **`ThreadInfo.getStackTrace()`** populated for the
+  current thread via a synthesized `new Throwable().getStackTrace()`
+  (which doesn't re-enter the bean). Arbitrary-thread walk is
+  still empty — JCGO's runtime can't suspend-and-walk other
+  threads yet; `pthread_kill(SIGUSR2)` + sigaction handler on
+  POSIX or `SuspendThread` + `StackWalk64` on Win32 would do
+  it. Punted as separate work.
+- ~~`ThreadMXBean.dumpAllThreads()`~~ — n/a; doesn't exist in
+  classpath-0.93's `ThreadMXBean` interface (Java-6 addition that
+  postdates the classpath release we're built against).
 
 **Misleading values (lies about CPU time):**
 
-- [ ] `ThreadMXBean.getThreadCpuTime(long)` /
-  `getThreadUserTime(long)` — always 0 (`jcgogmt.c`
-  `getThreadCpuUserTime0` stub). Either implement (Win32
-  `GetThreadTimes`, Linux `/proc/self/task/<tid>/stat`) or wire
-  `isThreadCpuTimeSupported()` to return `false` so callers know.
+- ~~`ThreadMXBean.getThreadCpuTime(long)` /
+  `getThreadUserTime(long)`~~ — n/a; classpath's `ThreadMXBeanImpl`
+  already gates on `isThreadCpuTimeSupported()` which checks the
+  `gnu.java.lang.management.ThreadTimeSupport` system property
+  (unset by JCGO), so both methods throw
+  `UnsupportedOperationException` rather than returning 0. The
+  underlying `getThreadCpuUserTime0` stub is unreachable.
 
 **Honest answers (return value already conveys "not supported"):**
 
@@ -81,43 +101,167 @@ real values:
 - `MemoryPoolMXBean.*` mostly stubbed — pools are
   JIT/generational concepts that don't map to BDWGC.
 
+### Stack traces + Java-level line info
+
+End-to-end `Throwable.getStackTrace()` produces frames with real
+`className`, `methodName`, `fileName`, and `lineNumber` populated
+on MSVC builds. A separate crash dumper writes the same shape to
+`<exe>.stk` when the binary fails before reaching user code.
+
+- [x] **`Throwable.getStackTrace()`** — `include/jcgothrw.c` was
+  three stubs; now wired:
+  - **Win32 capture**: `CaptureStackBackTrace` returns frames into
+    a `long[]` JCGO holds as opaque `vmdata`.
+  - **Win32 symbol resolution**: DbgHelp `SymFromAddr` is the
+    primary path (works for both MSVC + PDB and any binary whose
+    symbols ended up in the COFF symtab); a self-contained PE
+    export-table walk is the fallback for mingw + `-Wl,--export-all-symbols`
+    builds.
+  - **Win32 line resolution**: `SymGetLineFromAddr64` returns
+    Java file + Java line, decoded by Java side into `fileName`
+    + `lineNumber` on `StackTraceElement`. POSIX stays at line
+    0 — no DWARF reader bundled, MSVC declared the canonical
+    line-info path.
+  - **Java demangle**: `VMThrowable.decodeMangledName` splits
+    the mangled C name on `__`, strips the `package_` prefix,
+    and replaces `_` with `.` to recover `(className,
+    methodName)`. Best-effort; underscore-bearing or inner-class
+    names decode imperfectly but a slightly garbled identifier
+    pair is still vastly more useful than a hex address.
+  - E2EVerify asserts on the trace: non-empty, contains `main`,
+    top-frame demangles to `E2EVerify.main`. The fixture also
+    dumps the full trace; sample on MSVC:
+    ```
+    at E2EVerify.traceLevel3 (E2EVerify.java:96)
+    at E2EVerify.traceLevel2 (E2EVerify.java:96)
+    at E2EVerify.traceLevel1 (E2EVerify.java:95)
+    at E2EVerify.main      (E2EVerify.java:290)
+    ```
+
+- [x] **`#line` pragmas in generated C** (default on; opt-out
+  with `-no-line-info`). Each method body opens with
+  `#line N "Foo.java"` anchored to the body's first statement
+  (Block.lineNum captures the closing `}` per parser quirk, so
+  drilling into `Block.terms[1]` is needed). Per-statement
+  directives fire from `ExprStatement` and `ReturnStatement`
+  so DWARF/PDB carry Java-level positions throughout the
+  function body, not just at entry. Sample E2EVrf.c gets ~180
+  directives. The pragma must precede the C function
+  declaration, not follow it — MSVC's PDB stores each
+  function's anchor as `<last #line> + (C-line delta)` and a
+  pragma after `{` attributes the entry to the previous
+  method's tail. Test-e2e.sh asserts both the C-output
+  presence and the round-trip via MSVC PDB strings-grep.
+
+- [x] **Crash dumper** — `native/jcgocrash.c`, adapted from
+  mobileui's editor crash_dump (AIBridge socket bits stripped).
+  Auto-installs at process start (`.CRT$XCU` initializer on MSVC,
+  `__attribute__((constructor))` on gcc); catches SEH +
+  SIGSEGV/SIGABRT; walks the faulting thread's stack via
+  `RtlVirtualUnwind` + `RtlLookupFunctionEntry`; resolves each
+  frame via the same DbgHelp pair (`SymFromAddr` +
+  `SymGetLineFromAddr64`); writes `<exe-basename>.stk` next to
+  the binary AND mirrors to stderr. Useful both for actual
+  crashes and as a sanity check that the `#line` pragma chain
+  is end-to-end functional (a deliberately-failing test binary
+  still produces a fully symbolized trace before dying).
+
+- [x] **Win64 dirRead handle truncation** (incidentally surfaced
+  while debugging the MSVC build's JNI-bootstrap segfault).
+  `struct jcgo_tfind_s.handle` in `native/jcgofile.h` was typed
+  `long` (32-bit on Win64). MSVC's `_findfirst` returns 64-bit
+  `intptr_t`; the cast truncated the upper 32 bits, leaving a
+  junk handle that crashed `_findnext` inside
+  `RtlEnterCriticalSection`. Switched to `intptr_t` for MSVC.
+  mingw was masking the bug because its UCRT happened to hand
+  out small 32-bit-clean handle values; MSVC's UCRT hands out
+  full pointer-shaped handles, so the truncation was
+  immediately fatal. Standalone fix; not specific to the
+  trace work, but blocked the MSVC verify binary from running
+  the trace probe.
+
+- [x] **Permanent MSVC build path in test-e2e.sh** — detects VS
+  2022, stages a `.bat` driver that `call`s vcvars64.bat then
+  invokes `cl.exe` with `/Zi /Od /MT /DJCGO_FFDATA
+  /DJCGO_LARGEFILE /DJCGO_WIN32`, links `dbghelp.lib` +
+  `legacy_stdio_definitions.lib` + standard system libs,
+  produces verify_msvc.exe + verify_msvc.pdb. BDWGC linkage:
+  prefers `libs/amd64/msvc/gc.lib` if present (gitignored;
+  user runs `mkjcgo/build-win64-msvc.bat` once to produce it),
+  falls back to `native/jcgogcstub.c` (linker-satisfying
+  no-op stubs) for PDB-inspection-only builds. The asserts:
+  `verify_msvc.pdb` strings-greps to `E2EVerify.java`; if
+  the real lib was used, the binary actually runs through the
+  full e2e fixture and produces a populated trace.
+
+### Reachability for nested-annotation defaults
+
+- [x] `ClassDefinition.registerAnnotationList` now follows
+  member-method return types: when registering a Proxy for
+  `@interface A`, walks A's methods and registers a Proxy for
+  every return type that's also `@interface`. This fills B's
+  `reflectedMethods` table so `fillInDefaults` can discover B's
+  own defaults at runtime. Removed the `@Inner` workaround on
+  `E2EVerify.allDefaults()` and confirmed the test still passes.
+
 ### Test coverage gaps
 
 These features are claimed-done but the e2e fixture exercises only
 narrow shapes. Real users will hit edge cases. Widen the fixture
 before declaring full confidence.
 
-- [ ] **Annotation member defaults** — only `int` + `String`
-  defaults tested. Untested: `Class<X> default Foo.class`,
-  `enum default X.RED`, brace-array defaults like
-  `int[] default {1, 2, 3}`, nested-annotation defaults like
-  `Spec default @Spec(value="x")`.
-- [ ] **`Constructor.getParameterAnnotations()`** — code is
-  symmetric to `Method.getParameterAnnotations` and is wired in
-  `Constructor.java`, but the e2e fixture only invokes the Method
-  variant. Add a fixture with a constructor that has annotated
-  parameters and reflect over it.
-- [ ] **`@interface` const declarations** — `int` + `String`
-  constants tested. Untested: `Class<?>` constants
-  (`Class<? extends Foo> KIND = Foo.class;`) and array constants
-  (`int[] LIMITS = {1, 2, 3};`).
-- [ ] **`@Inherited` walk** — only 2-level (Parent → Child).
-  Multi-level (Grandparent → Parent → Child) and inheritance via
-  interface chain (an annotation on an interface I, where C extends
-  another class that implements I) untested.
-- [ ] **Repeating annotations** — only `String value()` shape
-  tested via `@Tag("alpha") @Tag("beta")`. Untested: repeating
-  annotations with multiple members
-  (`@Score(value="x", level=3) @Score(value="y", level=4)`),
-  and the auto-wrap into a `@Repeatable` container's `value()`.
-- [ ] **Cross-bound method dispatch** — 2-bound case
-  (`<X extends Number & Comparable>`) tested. Untested: 3+ bounds
-  (`<X extends A & B & C>` with method on C), cross-bound dispatch
-  through a receiver that's a field access rather than a local
-  parameter. Receiver-separated form (vecSize==0 retry path in
-  MethodInvocation) is wired but not e2e-tested -- normal `a.x()`
-  parses path-style, so this branch only fires in less-common
-  expression-receiver shapes.
+- [x] **Annotation member defaults** — `int`, `String`,
+  `Class`, enum, brace-array (`String[] default {"a","b","c"}`),
+  and nested-annotation (`Inner default @Inner`) defaults all
+  exercised in `E2EVerify`. Two fixes shipped along the way:
+  (a) `@interface ElemType[] name()` form — Parser now threads
+  the pre-name dim into the synthesized MethodDeclaration so the
+  return type is the array type, not the component type;
+  (b) nested-annotation default — `parseValueWithType` now
+  calls `fillInDefaults` on the nested values map before
+  building the proxy, otherwise members of the nested
+  annotation IncompleteAnnotation-throw on access.
+- [x] **`Constructor.getParameterAnnotations()`** — added
+  `ParamAnnoCtor` fixture in `E2EVerify`. Found and fixed: the
+  parser dropped per-parameter annotation ARG TEXT for
+  constructors (only types were captured), so
+  `@WithDefaults(level = 7)` on a ctor param reflected as default.
+  `ConstrDeclaration.processPass1` now also calls
+  `MethodDeclaration.collectParamAnnotationArgs` and threads it
+  via `setParameterAnnotationArgsLists`.
+- [x] **`@interface` const declarations** — added `Class KIND`
+  and `int[] LIMITS` to `WithConsts`. Found and fixed: the
+  `@interface` element parser captured the pre-name array dim
+  for the constant-declaration branch but didn't thread it into
+  the synthesized `FieldDeclaration` (only into the method-decl
+  branch, fixed earlier). `int[] LIMITS = {1, 2, 3}` was being
+  parsed as `int LIMITS = {…}`. Pre-name dim now flows to
+  `FieldDeclaration.terms[1]`.
+- [x] **`@Inherited` walk** — multi-level (Grandparent3 →
+  Parent3 → Child3, all asserted) plus interface-chain (an
+  annotation on an interface I, where C implements I; per JLS
+  9.6.4.3 must NOT propagate, asserted false). Found and fixed:
+  `Class.internalGetAnnotations` was walking
+  `klass.getInterfaces()` and pulling their declared annotations
+  into the inherited set, so `HasFamilyIface.isAnnotationPresent
+  (Family)` returned true. JLS 9.6.4.3 says `@Inherited` walks
+  the direct superclass chain only — interface walk removed.
+- [x] **Repeating annotations** — added `@Score(value, level)`
+  with `@Repeatable(Scores.class)` and asserted `multiScored
+  getAnnotationsByType(Score.class)` returns both members with
+  per-instance values. Worked first-shot — no fix needed.
+- [x] **Cross-bound method dispatch** — added 3-bound type-var
+  (`<X extends Number & Comparable & Describable>`) with
+  dispatch on the third bound, plus field-access receiver
+  (`h.val.describe()` where `val` is a generic field of a
+  multi-bound type-var). Found and fixed: the path-style
+  retry in `MethodInvocation.processPass1` was gated on
+  `vecSize == 2` and looked up only single-name local vars.
+  Extended to `vecSize >= 2` with a `resolvePathToVarDef`
+  helper that walks dotted paths to find the deepest field's
+  multi-bound secondaries; receiver-path extraction now uses
+  `qn.terms[0]` directly (the head chain) since the QualifiedName
+  layout is `terms[0]=head, terms[1]=last segment`.
 
 ### Won't do
 

@@ -951,13 +951,12 @@ public final class Class /* hard-coded class name */ /* const data */
     // JLS 9.6.4.3: only @Inherited annotations propagate from a
     // superclass to its subclasses. Direct annotations on `this`
     // are always included; for ancestors, gate on the
-    // @Inherited meta-annotation.
+    // @Inherited meta-annotation. @Inherited applies only to the
+    // direct superclass chain, NOT to interfaces — so this loop
+    // does not walk klass.getInterfaces().
     if (direct || isInheritableAnnotation(a.annotationType()))
      set.add(a);
    }
-   Class[] ifaces = klass.getInterfaces();
-   for (int i = 0; i < ifaces.length; i++)
-    ifaces[i].internalGetAnnotations(set);
    direct = false;
   } while ((klass = klass.getSuperclass()) != null);
  }

@@ -45,6 +45,54 @@ public class E2EVerify {
     return a.compareTo(b) <= 0 ? a : b;
   }
 
+  interface Describable { String describe(); }
+
+  static class Tagged extends Number
+      implements Comparable<Tagged>, Describable {
+    final int v;
+    Tagged(int v) { this.v = v; }
+    public int intValue() { return v; }
+    public long longValue() { return v; }
+    public float floatValue() { return v; }
+    public double doubleValue() { return v; }
+    public int compareTo(Tagged other) { return v - other.v; }
+    public String describe() { return "tagged:" + v; }
+  }
+
+  // Three-bound type parameter — method dispatch on the third bound.
+  public <X extends Number & Comparable & Describable> String tripleBound(X x) {
+    return x.describe();
+  }
+
+  // Field-access receiver for cross-bound dispatch — `holder.val.describe()`
+  // where `val`'s static type is the type-var X.
+  static class GenHolder<X extends Number & Comparable & Describable> {
+    X val;
+  }
+  public <X extends Number & Comparable & Describable> String fieldAccessCrossBound(
+      GenHolder<X> h) {
+    return h.val.describe();
+  }
+
+  // Once-eval observation: a side-effecting receiver behind a cast.
+  // The method-ref `((Comparable) bumpAndGet42())::equals` should
+  // evaluate `bumpAndGet42()` exactly once at lambda-creation time
+  // (JLS 15.13.3). Calling the SAM repeatedly must not re-bump the
+  // counter -- if `rcvCounter` ends at 1 after two SAM calls, we got
+  // once-eval; 3 means the receiver re-evaluates per call.
+  static int rcvCounter;
+  static Object bumpAndGet42() {
+    rcvCounter++;
+    return Integer.valueOf(42);
+  }
+
+  static StackTraceElement[] traceLevel1() { return traceLevel2(); }
+  static StackTraceElement[] traceLevel2() { return traceLevel3(); }
+  static StackTraceElement[] traceLevel3() {
+    return new Throwable().getStackTrace();
+  }
+  interface Booler { boolean test(Object o); }
+
   interface StringSink { void accept(String s); }
 
   static StringSink mkSink() {
@@ -83,9 +131,26 @@ public class E2EVerify {
   @Tag("beta")
   public void multiTagged() {}
 
+  // Repeating annotation with multiple members — exercises auto-wrap
+  // into the @Repeatable container's value() and per-instance member
+  // value retention through the proxy.
+  @Score(value = "x", level = 3)
+  @Score(value = "y", level = 4)
+  public void multiScored() {}
+
   sealed interface Shape permits Circle, Square {}
   static final class Circle implements Shape { public String describe() { return "circle"; } }
   static final class Square implements Shape { public String describe() { return "square"; } }
+
+  enum Severity { LOW, MEDIUM, HIGH }
+
+  // Constructor parameter annotations — symmetric to
+  // Method.getParameterAnnotations but goes through Constructor.java's
+  // path, which is wired but wasn't e2e-tested before.
+  static class ParamAnnoCtor {
+    public ParamAnnoCtor(@MyTag String first,
+                         @WithDefaults(level = 7) Integer second) {}
+  }
 
   public static void main(String[] args) throws Exception {
     Producer p = new StringProducer();
@@ -137,6 +202,13 @@ public class E2EVerify {
     System.out.println("smaller(7,3) = " + ev.smaller(
         Integer.valueOf(7), Integer.valueOf(3)));
 
+    Tagged taggedX = new Tagged(42);
+    System.out.println("tripleBound = " + ev.tripleBound(taggedX));
+    GenHolder<Tagged> gh = new GenHolder<Tagged>();
+    gh.val = new Tagged(99);
+    System.out.println("fieldAccessCrossBound = "
+        + ev.fieldAccessCrossBound(gh));
+
     Method fn = E2EVerify.class.getMethod("smaller",
         new Class[]{ Number.class, Number.class });
     TypeVariable[] fnVars = fn.getTypeParameters();
@@ -155,6 +227,12 @@ public class E2EVerify {
     IntChecker eq42 = mkChecker(Integer.valueOf(42));
     System.out.println("eq42(42) = " + eq42.check(Integer.valueOf(42)));
     System.out.println("eq42(99) = " + eq42.check(Integer.valueOf(99)));
+
+    rcvCounter = 0;
+    Booler is42 = ((Comparable) bumpAndGet42())::equals;
+    System.out.println("is42(42) = " + is42.test(Integer.valueOf(42)));
+    System.out.println("is42(99) = " + is42.test(Integer.valueOf(99)));
+    System.out.println("rcv-evals after two SAM calls = " + rcvCounter);
 
     // TODO #12: charset round-trip via OS code page. Shift_JIS isn't
     // in classpath-0.93's pure-Java set; the iconv shim routes the
@@ -190,9 +268,53 @@ public class E2EVerify {
           java.lang.management.ManagementFactory.getThreadMXBean();
       System.out.println("tm.getThreadCount > 0 = "
           + (tm.getThreadCount() > 0));
+      long selfId = Thread.currentThread().getId();
+      java.lang.management.ThreadInfo info = tm.getThreadInfo(selfId);
+      System.out.println("tm.getThreadInfo non-null = "
+          + (info != null));
+      System.out.println("tm.getThreadInfo.id matches = "
+          + (info != null && info.getThreadId() == selfId));
+      System.out.println("tm.getThreadInfo.name non-null = "
+          + (info != null && info.getThreadName() != null));
+      // tm.getThreadInfo(id) defaults maxDepth=0 (no frames); use the
+      // 2-arg form to ask for the actual trace.
+      java.lang.management.ThreadInfo deepInfo =
+          tm.getThreadInfo(selfId, Integer.MAX_VALUE);
+      java.lang.StackTraceElement[] trace = deepInfo != null
+          ? deepInfo.getStackTrace() : null;
+      System.out.println("tm.getThreadInfo.stack non-empty = "
+          + (trace != null && trace.length > 0));
     } catch (Throwable t) {
       System.out.println("ThreadMXBean: " + t.getClass().getName());
     }
+    StackTraceElement[] selfTrace = traceLevel1();
+    System.out.println("Throwable.getStackTrace non-empty = "
+        + (selfTrace.length > 0));
+    boolean hasMain = false;
+    for (int i = 0; i < selfTrace.length; i++) {
+      if ("main".equals(selfTrace[i].getMethodName())) {
+        hasMain = true;
+        break;
+      }
+    }
+    System.out.println("Throwable.getStackTrace contains main = "
+        + hasMain);
+    if (selfTrace.length > 0) {
+      System.out.println("Throwable.getStackTrace[0].class = "
+          + selfTrace[0].getClassName());
+      System.out.println("Throwable.getStackTrace[0].method = "
+          + selfTrace[0].getMethodName());
+    }
+    System.out.println("--- full trace ---");
+    for (int i = 0; i < selfTrace.length; i++) {
+      StackTraceElement e = selfTrace[i];
+      String loc = e.getFileName() != null
+          ? "(" + e.getFileName() + ":" + e.getLineNumber() + ")"
+          : "(<no file>)";
+      System.out.println("  at " + e.getClassName()
+          + "." + e.getMethodName() + " " + loc);
+    }
+    System.out.println("--- end trace ---");
     try {
       java.lang.management.MemoryMXBean mm =
           java.lang.management.ManagementFactory.getMemoryMXBean();
@@ -209,6 +331,15 @@ public class E2EVerify {
         WithConsts.class.getField("LIMIT");
     System.out.println("WithConsts.LIMIT (via reflection) = "
         + limitField.get(null));
+    java.lang.reflect.Field kindField =
+        WithConsts.class.getField("KIND");
+    System.out.println("WithConsts.KIND = "
+        + ((Class) kindField.get(null)).getName());
+    java.lang.reflect.Field limitsField =
+        WithConsts.class.getField("LIMITS");
+    int[] limitsArr = (int[]) limitsField.get(null);
+    System.out.println("WithConsts.LIMITS.length = " + limitsArr.length);
+    System.out.println("WithConsts.LIMITS[1] = " + limitsArr[1]);
 
     Method old = E2EVerify.class.getMethod("oldMethod", new Class[0]);
     System.out.println("oldMethod isAnnotationPresent(Deprecated) = "
@@ -248,6 +379,18 @@ public class E2EVerify {
     Method levelMember = WithDefaults.class.getMethod("level", new Class[0]);
     System.out.println("WithDefaults.level default = "
         + levelMember.getDefaultValue());
+    System.out.println("allDefaults @WithDefaults.kind = "
+        + ((Class) ad.kind()).getName());
+    System.out.println("allDefaults @WithDefaults.severity = "
+        + ((E2EVerify.Severity) ad.severity()).name());
+    String[] tags = ad.tags();
+    System.out.println("allDefaults @WithDefaults.tags.length = "
+        + tags.length);
+    System.out.println("allDefaults @WithDefaults.tags[1] = "
+        + tags[1]);
+    Inner inner = ad.inner();
+    System.out.println("allDefaults @WithDefaults.inner.text = "
+        + inner.text());
 
     Annotation[] myTagMeta = MyTag.class.getDeclaredAnnotations();
     System.out.println("MyTag.getDeclaredAnnotations.length = " + myTagMeta.length);
@@ -273,6 +416,10 @@ public class E2EVerify {
         + Child.class.isAnnotationPresent(NotInherited.class));
     System.out.println("Parent.isAnnotationPresent(Family) = "
         + Parent.class.isAnnotationPresent(Family.class));
+    System.out.println("Child3.isAnnotationPresent(Family) = "
+        + Child3.class.isAnnotationPresent(Family.class));
+    System.out.println("HasFamilyIface.isAnnotationPresent(Family) = "
+        + HasFamilyIface.class.isAnnotationPresent(Family.class));
 
     Method mt = E2EVerify.class.getMethod("multiTagged", new Class[0]);
     Annotation[] tagsByType = mt.getAnnotationsByType(Tag.class);
@@ -280,6 +427,16 @@ public class E2EVerify {
         + tagsByType.length);
     for (int i = 0; i < tagsByType.length; i++) {
       System.out.println("  tag[" + i + "] = " + ((Tag) tagsByType[i]).value());
+    }
+
+    Method ms = E2EVerify.class.getMethod("multiScored", new Class[0]);
+    Annotation[] scoresByType = ms.getAnnotationsByType(Score.class);
+    System.out.println("multiScored getAnnotationsByType(Score).length = "
+        + scoresByType.length);
+    for (int i = 0; i < scoresByType.length; i++) {
+      Score sc = (Score) scoresByType[i];
+      System.out.println("  score[" + i + "] = " + sc.value()
+          + ":" + sc.level());
     }
 
     Method ra = E2EVerify.class.getMethod("receivesAnnotated",
@@ -294,6 +451,25 @@ public class E2EVerify {
         if (params[i][j] instanceof WithDefaults) {
           WithDefaults wd = (WithDefaults) params[i][j];
           System.out.println("      value=" + wd.value() + " level=" + wd.level());
+        }
+      }
+    }
+
+    java.lang.reflect.Constructor[] ctors =
+        ParamAnnoCtor.class.getDeclaredConstructors();
+    System.out.println("ParamAnnoCtor ctorCount = " + ctors.length);
+    Annotation[][] ctorParams = ctors[0].getParameterAnnotations();
+    System.out.println("ParamAnnoCtor paramCount = " + ctorParams.length);
+    for (int i = 0; i < ctorParams.length; i++) {
+      System.out.println("  ctorParam[" + i + "].length = "
+          + ctorParams[i].length);
+      for (int j = 0; j < ctorParams[i].length; j++) {
+        System.out.println("    ctor[" + i + "][" + j + "] = "
+            + ctorParams[i][j].annotationType().getName());
+        if (ctorParams[i][j] instanceof WithDefaults) {
+          WithDefaults wd = (WithDefaults) ctorParams[i][j];
+          System.out.println("      ctor value=" + wd.value()
+              + " level=" + wd.level());
         }
       }
     }
@@ -314,6 +490,15 @@ public class E2EVerify {
 @interface Tags { Tag[] value(); }
 
 @Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@java.lang.annotation.Repeatable(Scores.class)
+@interface Score { String value(); int level(); }
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@interface Scores { Score[] value(); }
+
+@Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 @java.lang.annotation.Inherited
 @interface Family {}
@@ -328,11 +513,31 @@ class Parent {}
 
 class Child extends Parent {}
 
+// 3-level chain to exercise @Inherited's transitive walk.
+@Family
+class Grandparent3 {}
+class Parent3 extends Grandparent3 {}
+class Child3 extends Parent3 {}
+
+// @Inherited only walks the superclass chain per JLS 9.6.4.3 — it
+// should NOT propagate through interface implementations.
+@Family
+interface IFamily {}
+class HasFamilyIface implements IFamily {}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@interface Inner { String text() default "inner-default"; }
+
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 @interface WithDefaults {
   String value() default "ok";
   int level() default 5;
+  Class kind() default Integer.class;
+  E2EVerify.Severity severity() default E2EVerify.Severity.MEDIUM;
+  String[] tags() default { "a", "b", "c" };
+  Inner inner() default @Inner;
 }
 
 @Retention(RetentionPolicy.RUNTIME)
@@ -340,5 +545,7 @@ class Child extends Parent {}
 @interface WithConsts {
   int LIMIT = 42;
   String LABEL = "anno-const";
+  Class KIND = Integer.class;
+  int[] LIMITS = {1, 2, 3};
   String name();
 }

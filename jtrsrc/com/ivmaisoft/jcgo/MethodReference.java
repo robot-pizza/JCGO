@@ -45,6 +45,7 @@ final class MethodReference extends LexNode {
     private final String methodName;
     private final boolean isCtor;
     private InstanceCreation lifted;
+    private static int captureCounter;
 
     MethodReference(Term receiver, String methodName, boolean isCtor) {
         super(receiver);
@@ -94,9 +95,28 @@ final class MethodReference extends LexNode {
         }
 
         boolean unbound = !isCtor && detectUnboundInstance(sam, c);
-        Term body = buildBody(paramNames, sam, unbound);
+        // Once-eval semantics for real-expression receivers (JLS 15.13.3).
+        // For `(getThing())::handle` and similar, the receiver expression
+        // must evaluate exactly once at lambda-creation time. The current
+        // call-site path embeds the receiver Term directly into the SAM
+        // body, which re-runs it on every invocation. Capture it into a
+        // field of the synthesized class so the field's initializer (run
+        // once at construction) holds the result.
+        Term captureField = null;
+        String captureName = null;
+        if (!isCtor && !unbound && !receiverIsQualifiedName(terms[0])) {
+            Object[] cap = buildReceiverCapture(c);
+            if (cap != null) {
+                captureField = (Term) cap[0];
+                captureName = (String) cap[1];
+            }
+        }
+        Term body = buildBody(paramNames, sam, unbound, captureName);
         Term classBody = LambdaSynthesis.buildClassBody(sam, lambdaParams,
                 body, false);
+        if (captureField != null) {
+            classBody = new Seq(captureField, classBody);
+        }
 
         Term typeTerm = new ClassOrIfaceType(qualifiedName(iface.name()));
         lifted = new InstanceCreation(typeTerm, Empty.newTerm(), classBody);
@@ -104,8 +124,75 @@ final class MethodReference extends LexNode {
         lifted.processPass1(c);
     }
 
+    /**
+     * For receiver shapes whose static type is syntactically derivable
+     * without running pass1 (currently: explicit casts, possibly nested
+     * in parens), capture the receiver into a final field on the
+     * synthesized anonymous class. The field's initializer evaluates
+     * once at construction — JLS 15.13.3 once-eval semantics — and the
+     * SAM body reads from the field instead of re-evaluating the
+     * expression.
+     *
+     * Pre-running pass1 to discover the type for a non-cast receiver
+     * (e.g. `(getThing())::handle`) would bind any free names against
+     * the outer scope, blocking JCGO's anon-class-capture mechanism
+     * when those names are subsequently re-encountered as part of the
+     * field initializer in the inner-class context. So for receivers
+     * whose type is not syntactically apparent, this returns null and
+     * the caller falls back to inline embedding (re-eval per call).
+     */
+    private Object[] buildReceiverCapture(Context c) {
+        Term castType = extractCastType(terms[0]);
+        if (castType == null) return null;
+        String name = "$mref$rcv$" + (captureCounter++);
+        Term varDeclr = new VariableDeclarator(
+                new VariableIdentifier(new LexTerm(LexTerm.ID, name)),
+                Empty.newTerm(), terms[0]);
+        Term field = new FieldDeclaration(castType, Empty.newTerm(),
+                varDeclr);
+        Term modifiers = new Seq(new AccModifier(AccModifier.PRIVATE),
+                new AccModifier(AccModifier.FINAL));
+        Term decl = new TypeDeclaration(modifiers, field);
+        return new Object[] { decl, name };
+    }
+
+    /**
+     * Walk through paren / Expression wrappers; return the cast type
+     * Term if the receiver's outermost shape is a CastExpression.
+     * Otherwise null. The returned Term is fresh enough to be reused
+     * as a field-declaration type.
+     */
+    private static Term extractCastType(Term receiver) {
+        Term inner = receiver;
+        while (inner instanceof Expression || inner instanceof ParenExpression) {
+            inner = ((LexNode) inner).terms[0];
+        }
+        if (!(inner instanceof CastExpression)) return null;
+        Term castTypeExpr = ((LexNode) inner).terms[0];
+        // CastExpression's terms[0] is an Expression wrapping the type
+        // (typically a QualifiedName like `Comparable` or `java.util.List`,
+        // or a PrimitiveType, or a TypeWithDims). For field-decl use we
+        // need a ClassOrIfaceType / PrimitiveType / TypeWithDims at the
+        // outer layer. Primitive-typed receivers don't reach this point
+        // (method refs need an object receiver), so wrap qualified-name
+        // shapes as ClassOrIfaceType.
+        Term ct = castTypeExpr;
+        while (ct instanceof Expression || ct instanceof ParenExpression) {
+            ct = ((LexNode) ct).terms[0];
+        }
+        if (ct instanceof QualifiedName) {
+            return new ClassOrIfaceType(ct);
+        }
+        if (ct instanceof ClassOrIfaceType
+                || ct instanceof PrimitiveType
+                || ct instanceof TypeWithDims) {
+            return ct;
+        }
+        return null;
+    }
+
     private Term buildBody(ObjVector paramNames, MethodDefinition sam,
-            boolean unbound) {
+            boolean unbound, String captureName) {
         int n = paramNames.size();
         if (unbound) {
             // `Class::instanceMethod` — first SAM param becomes the
@@ -163,6 +250,15 @@ final class MethodReference extends LexNode {
             Term receiverPath = unwrapToQualifiedName(terms[0]);
             Term combined = appendQualifiedSegment(receiverPath, methodName);
             return new MethodInvocation(combined, Empty.newTerm(), args);
+        }
+        if (captureName != null) {
+            // Receiver was captured into the synthesized class as a
+            // final field — the SAM body reads from the field instead
+            // of re-evaluating the receiver expression.
+            Term fieldRef = new Expression(new QualifiedName(
+                    new LexTerm(LexTerm.ID, captureName), Empty.newTerm()));
+            return new MethodInvocation(fieldRef,
+                    new LexTerm(LexTerm.ID, methodName), args);
         }
         return new MethodInvocation(terms[0],
                 new LexTerm(LexTerm.ID, methodName), args);

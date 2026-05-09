@@ -27,3 +27,12 @@
 /.codepro/
 /.project
 /.settings/
+
+# MSVC-side build leftovers when probe / harness binaries are run
+# from the repo root rather than .build_tmp/.
+/*.obj
+/*.pdb
+/*.stk
+/*.ilk
+/*.exp
+/*.lib

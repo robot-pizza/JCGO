@@ -314,6 +314,7 @@ public final class VMReflectAnnotations
     return null;
    Map nestedValues = parseArgText(nestedArgs, nestedClass, loader,
             declaring);
+   fillInDefaults(nestedValues, nestedClass);
    try
    {
     return Proxy.newProxyInstance(loader,

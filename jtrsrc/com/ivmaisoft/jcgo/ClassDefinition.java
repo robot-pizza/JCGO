@@ -3450,11 +3450,75 @@ final class ClassDefinition extends ExpressionType {
             if (!(o instanceof String)) continue;
             String n = (String) o;
             if (n.length() == 0) continue;
-            if (Main.dict.addAnnotationProxyByName(n, this, this) != null) {
+            ExpressionType et = Main.dict.addAnnotationProxyByName(n, this,
+                    this);
+            if (et != null) {
+                progress = true;
+                // For an `@interface A` whose member returns `@interface B`,
+                // B's reflected-methods table is reachable only via this
+                // walk — A's annotation site does not refer to B by name,
+                // so the standard registerAnnotationProxies traversal
+                // misses it. Pull every annotation-typed return type into
+                // the proxy set so VMReflectAnnotations.fillInDefaults can
+                // find B's own member defaults at runtime.
+                ClassDefinition annoCd = Main.dict.exists(n)
+                        ? Main.dict.get(n) : null;
+                if (annoCd == null) {
+                    String pkg = getPackageName();
+                    if (pkg != null && pkg.length() > 0
+                            && Main.dict.exists(pkg + "." + n)) {
+                        annoCd = Main.dict.get(pkg + "." + n);
+                    } else if (Main.dict.exists("java.lang." + n)) {
+                        annoCd = Main.dict.get("java.lang." + n);
+                    } else if (Main.dict.exists("java.lang.annotation." + n)) {
+                        annoCd = Main.dict.get("java.lang.annotation." + n);
+                    }
+                }
+                if (annoCd != null && annoCd.isAnnotationType()) {
+                    progress |= registerNestedAnnotationReturnTypes(annoCd);
+                }
+            }
+        }
+        return progress;
+    }
+
+    private boolean registerNestedAnnotationReturnTypes(ClassDefinition cd) {
+        boolean progress = false;
+        Enumeration en = cd.methodDictionary().keys();
+        while (en.hasMoreElements()) {
+            MethodDefinition md = cd.getMethodNoInheritance((String) en
+                    .nextElement());
+            if (md == null || md.isConstructor()) continue;
+            ExpressionType ret = md.exprType();
+            if (ret == null || ret.signatureDimensions() != 0) continue;
+            ClassDefinition retCd = ret.signatureClass();
+            if (retCd == null || retCd == cd) continue;
+            if (!retCd.isAnnotationType()) continue;
+            if (Main.dict.addAnnotationProxyByName(retCd.name(), this, this)
+                    != null) {
                 progress = true;
             }
         }
         return progress;
+    }
+
+    boolean isAnnotationType() {
+        return (modifiers & AccModifier.ANNOTATION) != 0;
+    }
+
+    /**
+     * Best-effort path-style source file string for #line pragmas in
+     * the generated C. Inner classes (`Outer$Inner`, `Outer.Inner`)
+     * resolve to the outer class's file. The path uses forward slashes
+     * so the directive is portable across host C toolchains.
+     */
+    String getJavaSourceFile() {
+        String n = name;
+        int dollar = n.indexOf('$');
+        if (dollar > 0) {
+            n = n.substring(0, dollar);
+        }
+        return n.replace('.', '/') + ".java";
     }
 
     int producePassOne() {

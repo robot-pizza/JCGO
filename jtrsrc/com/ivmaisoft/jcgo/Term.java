@@ -67,6 +67,10 @@ abstract class Term {
         this.lineNum = lineNum;
     }
 
+    int getLineNum() {
+        return lineNum;
+    }
+
     static void assertCond(boolean condition) {
         if (VerInfo.ASSERT_ENABLED && !condition)
             throw new AssertException();

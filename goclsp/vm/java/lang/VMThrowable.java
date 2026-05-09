@@ -84,26 +84,71 @@ final class VMThrowable /* hard-coded class name */
   Object vmdata = this.vmdata;
   int count = vmdata != null ? getStackTraceLen0(vmdata) : 0;
   StackTraceElement[] elements = new StackTraceElement[count];
-  if (count > 0)
+  for (int i = 0; i < count; i++)
   {
-   Class[] classes = new Class[count];
-   String[] methodNames = new String[count];
-   int[] lineNumbers = new int[count];
-   getStackTraceFill0(vmdata, classes, methodNames, lineNumbers);
-   for (int i = 0; i < count; i++)
+   byte[] symBytes = lookupSymbol0(vmdata, i);
+   String mangled = symBytes != null && symBytes.length > 0
+        ? new String(symBytes, 0, symBytes.length) : "";
+   String[] decoded = decodeMangledName(mangled);
+   int lineNum = lookupLine0(vmdata, i);
+   if (lineNum <= 0) lineNum = -1;
+   // Prefer DbgHelp's actual source filename — that's the .java
+   // path when JCGO emitted #line pragmas (the default), and the
+   // generated .c path when run with -no-line-info. Falls back
+   // to a synthesized `<class>.java` only when the resolver had
+   // no debug info at all (e.g. POSIX builds with no DWARF
+   // reader).
+   byte[] fileBytes = lookupFile0(vmdata, i);
+   String fileName;
+   if (fileBytes != null && fileBytes.length > 0)
    {
-    Class aclass = classes[i];
-    int lineNumber = lineNumbers[i];
-    String filename = null;
-    /* if (aclass != null &&
-        (filename = VMClass.getSourceFilename(aclass)) != null)
-     filename = filename.substring(filename.lastIndexOf('/') + 1); */
-    elements[i] = new StackTraceElement(filename, lineNumber,
-                   aclass != null ? getClassName(aclass) : null,
-                   methodNames[i], lineNumber == -2);
+    fileName = new String(fileBytes, 0, fileBytes.length);
+    int slash = fileName.lastIndexOf('\\');
+    if (slash < 0) slash = fileName.lastIndexOf('/');
+    if (slash >= 0) fileName = fileName.substring(slash + 1);
    }
+   else
+   {
+    fileName = "<unknown>".equals(decoded[0]) ? null
+         : (decoded[0] + ".java");
+   }
+   elements[i] = new StackTraceElement(decoded[0], decoded[1],
+        fileName, lineNum);
   }
   return elements;
+ }
+
+ // Best-effort reverse of JCGO's name mangling. JCGO emits each
+ // method as a C function named `<classCName>__<methodCSign>` where
+ // classCName has dots (`.`) and dollar signs (`$`) replaced by
+ // underscores, and an unpackaged top-level class gets a synthetic
+ // `package_` prefix. Heuristic:
+ //   - split on the first `__`
+ //   - left side: strip leading `package_`, replace `_` -> `.`
+ //   - right side, up to next `__`: method name (or "<unknown>" if
+ //     the chunk is empty)
+ // Edge cases (inner classes, names that contain `_`) decode imperfectly,
+ // but a slightly garbled className.methodName pair is still vastly more
+ // useful than an opaque address. Returns {className, methodName}.
+ private static String[] decodeMangledName(String mangled)
+ {
+  String[] r = new String[]{ "<unknown>", "<unknown>" };
+  if (mangled == null || mangled.length() == 0) return r;
+  int dd1 = mangled.indexOf("__");
+  if (dd1 <= 0)
+  {
+   r[1] = mangled;
+   return r;
+  }
+  String mc = mangled.substring(0, dd1);
+  if (mc.startsWith("package_")) mc = mc.substring(8);
+  r[0] = mc.replace('_', '.');
+  String rest = mangled.substring(dd1 + 2);
+  int dd2 = rest.indexOf("__");
+  String method = dd2 >= 0 ? rest.substring(0, dd2) : rest;
+  if (method.length() == 0) method = "<unknown>";
+  r[1] = method;
+  return r;
  }
 
  static final void exit(int status)
@@ -212,8 +257,11 @@ final class VMThrowable /* hard-coded class name */
 
  private static native int getStackTraceLen0(Object vmdata); /* JVM-core */
 
- private static native int getStackTraceFill0(Object vmdata, Class[] classes,
-   String[] methodNames, int[] lineNumbers); /* JVM-core */
+ private static native byte[] lookupSymbol0(Object vmdata, int index); /* JVM-core */
+
+ private static native int lookupLine0(Object vmdata, int index); /* JVM-core */
+
+ private static native byte[] lookupFile0(Object vmdata, int index); /* JVM-core */
 
  private static native void exit0(
    int status); /* JVM-core */ /* never return */

@@ -235,6 +235,7 @@ final class ReturnStatement extends LexNode {
     }
 
     void processOutput(OutputContext oc) {
+        oc.emitLineDirective(this);
         // Slice 22: emit the synthesized decl + switch-stmt before the
         // return when we lifted a `return switch (...) {...}` form.
         if (liftedPreamble != null) {
