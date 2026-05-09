@@ -53,9 +53,17 @@ cd .build_tmp\test-jcgon-%ARCH%-%SYST%
 %CC% -O2 -W3 -GF -MT -DJCGO_INTNN -DJCGO_FFDATA -DJCGO_LARGEFILE -DJCGO_EXEC -DJCGO_WIN32 -DJCGO_INET -DJCGO_ERRTOLOG -DJCGO_WMAIN -DJCGO_SYSWCHAR -DJCGO_SYSDUALW -I..\..\include -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -Zl -c ..\..\native\*.c /nologo || exit /b 1
 cd ..\..
 
-@rem Build TinyGC dynamic library (multi-threaded):
+@rem Build TinyGC dynamic library (multi-threaded). Skipped silently if
+@rem contrib/tinygc/ wasn't unpacked (no public release URL for TinyGC,
+@rem so this stays opt-in -- drop tinygc-2_6.tar.bz2 in contrib/ and
+@rem extract it to enable this step).
+@if not exist contrib\tinygc\tinygc.c goto :skip_tinygc
 mkdir dlls\%ARCH%\%BASESYS%\tinygc
 mkdir .build_tmp\dlls-tinygc-%ARCH%-%SYST%
 cd .build_tmp\dlls-tinygc-%ARCH%-%SYST%
 %CC% -Ox -W3 -GF -MT -DALL_INTERIOR_POINTERS -DGC_GCJ_SUPPORT -DGC_WIN32_THREADS -D_CRT_SECURE_NO_DEPRECATE -DGC_PRINT_MSGS -DGC_USE_WIN32_SYSTEMTIME -DGC_DLL -LD ..\..\contrib\tinygc\tinygc.c /link /out:..\..\dlls\%ARCH%\%BASESYS%\tinygc\gc.dll /nologo || exit /b 1
 cd ..\..
+goto :tinygc_done
+:skip_tinygc
+@echo Skipping TinyGC (contrib\tinygc\tinygc.c not found).
+:tinygc_done

@@ -1,15 +1,22 @@
 # Top-level entry point for JCGO build deliverables.
 # Wraps the per-platform scripts under mkjcgo/.
 
-.PHONY: all win32-msvc win64-msvc jcgo-jar zip release \
+.PHONY: all win32-msvc win64-msvc jcgo-jar dependencies zip release \
         clean clean-win32-msvc clean-win64-msvc clean-zip help
 
 all: win32-msvc win64-msvc
 
-win32-msvc:
+# Auto-fetch the third-party tarballs the MSVC builds expect under
+# contrib/ (BDWGC + libatomic_ops). Idempotent — skips if already
+# unpacked. TinyGC is not auto-fetched (no public release URL); the
+# win32 build skips its TinyGC step gracefully if absent.
+dependencies:
+	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\fetch-dependencies.ps1
+
+win32-msvc: dependencies
 	cmd /c "mkjcgo\build-win32-msvc.bat"
 
-win64-msvc:
+win64-msvc: dependencies
 	cmd /c "mkjcgo\build-win64-msvc.bat"
 
 # Build the translator .jars (jcgo.jar + auxbin/jre/*.jar). Pure
@@ -26,8 +33,8 @@ jcgo-jar:
 zip:
 	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\zip-release.ps1
 
-# End-to-end: build everything, then zip.
-release: jcgo-jar all zip
+# End-to-end: fetch contrib, build everything, then zip.
+release: dependencies jcgo-jar all zip
 
 clean: clean-win32-msvc clean-win64-msvc clean-zip
 
@@ -56,11 +63,13 @@ help:
 	@echo                     Output: libs/x86/msvc/, dlls/x86/win32/
 	@echo   win64-msvc        Build amd64 (64-bit) MSVC runtime libs and DLLs.
 	@echo                     Output: libs/amd64/msvc/, dlls/amd64/win32/
+	@echo   dependencies      Fetch BDWGC + libatomic_ops tarballs into contrib/
+	@echo                     (idempotent). Auto-run before win32-msvc/win64-msvc.
 	@echo   jcgo-jar          Build jcgo.jar + auxbin/jre/*.jar (translator).
 	@echo                     Pure PowerShell; needs javac/jar on PATH.
 	@echo   zip               Package dist/jcgo-binaries-windows.zip from
 	@echo                     existing build artifacts.
-	@echo   release           jcgo-jar + all + zip (end-to-end).
+	@echo   release           dependencies + jcgo-jar + all + zip (end-to-end).
 	@echo   clean             Remove all build + dist outputs.
 	@echo   clean-win32-msvc  Remove x86 MSVC build outputs.
 	@echo   clean-win64-msvc  Remove amd64 MSVC build outputs.
@@ -71,5 +80,8 @@ help:
 	@echo     vcvars is auto-loaded via mkjcgo/vcvars-locate.bat; no need
 	@echo     to run from a VS Developer Command Prompt.
 	@echo   - JDK with javac/jar on PATH (for jcgo-jar).
-	@echo   - contrib/bdwgc/, contrib/bdwgc/libatomic_ops/, contrib/tinygc/
-	@echo     unpacked (see mkjcgo/build-win{32,64}-msvc.bat headers).
+	@echo   - Internet access on first run (for `make dependencies`).
+	@echo.
+	@echo Optional:
+	@echo   - To build the TinyGC DLL, drop tinygc-2_6.tar.bz2 in contrib/
+	@echo     and unpack it. Skipped silently otherwise.
