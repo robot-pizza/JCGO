@@ -293,6 +293,16 @@ final class MethodReference extends LexNode {
         // build. Single-id receivers like `Box`, `String`, `Integer`
         // are the cases that actually want unbound-instance handling.
         if (dotted.indexOf('.') >= 0) return false;
+        // If the receiver name is a local variable (introduced by the
+        // user OR by MethodRefHoister's `var $mref$rcv$h$N = ...`
+        // lift), skip the resolveClass attempt — that path
+        // System.exits when it can't load a source file for the
+        // name. Local-var-typed receivers are bound instance refs;
+        // detectUnbound doesn't apply.
+        if (c.currentMethod != null
+                && c.currentMethod.getLocalVar(dotted) != null) {
+            return false;
+        }
         ClassDefinition rcvCls;
         try {
             rcvCls = c.resolveClass(dotted, true, false);

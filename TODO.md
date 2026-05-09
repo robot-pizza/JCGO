@@ -31,30 +31,35 @@ change to run through JCGO.
   initializer runs once at construction, JLS 15.13.3 compliant.
   E2EVerify exercises observably: a counter-bumping side-effecting
   receiver wrapped in a cast, two SAM calls, counter = 1.
-- [ ] **Method-call receivers** (`(getStream())::onNext`). The
-  receiver's static type isn't syntactically derivable without
-  pass1, and pass1ing in the outer context binds free names there,
-  blocking the anon-class capture machinery from re-binding them
-  inside the lifted class. So this shape still re-evaluates the
-  expression per SAM call.
+- [x] **Method-call receivers** (`(getStream())::onNext`). New
+  `MethodRefHoister` (parse-time, modeled on `SwitchArgHoister`)
+  walks expression trees at the same three statement-level hoist
+  points and, for every `MethodReference` whose receiver isn't
+  already a `QualifiedName` or a `CastExpression` (those have
+  their own working paths), lifts the receiver to a synthesized
+  `var $mref$rcv$h$N = <receiver>;` local declaration as a
+  preamble before the surrounding statement. The receiver
+  expression then becomes a single-name reference that hits the
+  existing `QualifiedName`-receiver path, evaluating the original
+  expression exactly once. JLS 15.13.3 compliant.
 
-  Attempted-and-backed-out: a synthesized static helper method on
-  the enclosing class — `$mref$factory$N(R rcv) { return new
-  TargetIface() { ... rcv.method(args) ... }; }` — wired via
-  `ClassDefinition.addMethod` during pass1, with the call-site
-  rewritten to `$mref$factory$N(receiverExpr)`. The architecture
-  rejects this: methods added mid-pass1 don't go through the
-  normal `prepareMethodsForOutput → discoverObjLeaks` ordering;
-  the inner `InstanceCreation` doesn't pass0 in a sensible
-  context; and a "Cannot create an instance of an abstract class"
-  error fires because the anon-class definition isn't registered
-  through the usual lift path. Worth revisiting; cleaner path is
-  a parse-time hoister (`SwitchArgHoister`-style) that lifts the
-  receiver to a synthesized local at the surrounding statement
-  level BEFORE pass1, so the receiver becomes a single-name
-  reference that the existing QualifiedName path handles
-  trivially. Cost: another tree-walk pass with the same
-  scope-skipping rules SwitchArgHoister already implements.
+  Type inference for the synthesized local rides on JCGO's
+  existing `var` (Slice 24a / JLS 10) handling — pass1 sees the
+  init expr and propagates its `exprType` to the local in the
+  outer scope, where the receiver naturally lives. No
+  inner-vs-outer capture conflict.
+
+  Surfaced fix: `MethodReference.detectUnboundInstance` was
+  unconditionally calling `c.resolveClass(dotted, true, false)`
+  on a single-id receiver, which `System.exit`s when the name
+  isn't a class (parseJavaFile fails to find the source).
+  Pre-checking `c.currentMethod.getLocalVar(dotted)` skips the
+  resolveClass attempt when the receiver is a local var — covers
+  both the new hoist case and any existing user-written
+  `localVar::method` form (which had been latently broken).
+
+  E2EVerify covers it: `is42mc = (bumpAndGet42())::equals`,
+  two SAM calls, `mc rcv-evals after two SAM calls = 1`.
 
 ### `java.lang.management` Android subset
 
@@ -278,6 +283,72 @@ before declaring full confidence.
   multi-bound secondaries; receiver-path extraction now uses
   `qn.terms[0]` directly (the head chain) since the QualifiedName
   layout is `terms[0]=head, terms[1]=last segment`.
+
+### In-code `TODO #N` comment audit
+
+A `grep -rn "TODO\b"` across `jtrsrc/`, `goclsp/vm/`, `include/jcgo*.c`,
+`native/`, `examples/java17/`, `mkjcgo/test-e2e.sh` finds 34 hits.
+Cataloged here so we can decide per-comment whether each is genuine
+unfinished work or stale labeling on now-shipped code. Numbers (`#1`,
+`#2`, ...) correspond to JCGO modernization slices; many of those
+slices are now CHECKED IN this TODO.md. The convention so far has
+been to keep the slice number as a permanent doc tag, not a "to do"
+marker — but the literal text "TODO" reads as if work is pending.
+
+`#1` (annotation member defaults — shipped):
+  - `jtrsrc/com/ivmaisoft/jcgo/ClassDefinition.java:5411`
+  - `jtrsrc/com/ivmaisoft/jcgo/MethodDeclaration.java:149`
+  - `jtrsrc/com/ivmaisoft/jcgo/MethodDefinition.java:189`
+  - `goclsp/vm/java/lang/reflect/Method.java:363`
+  - `goclsp/vm/java/lang/reflect/VMMethod.java:952`
+  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:172`
+  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:271`
+  - `include/jcgormet.c:154`
+
+`#2` (annotation modifier bit — shipped):
+  - `jtrsrc/com/ivmaisoft/jcgo/ClassDeclaration.java:104`
+  - `jtrsrc/com/ivmaisoft/jcgo/ClassDefinition.java:707`
+  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:4818`
+  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:144`
+
+`#3` (parameter annotation arg text — shipped):
+  - `jtrsrc/com/ivmaisoft/jcgo/ClassDefinition.java:5345`
+  - `jtrsrc/com/ivmaisoft/jcgo/MethodDeclaration.java:165`
+  - `jtrsrc/com/ivmaisoft/jcgo/MethodDefinition.java:183`
+  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:168`
+  - `goclsp/vm/java/lang/reflect/Constructor.java:327`
+  - `goclsp/vm/java/lang/reflect/Method.java:376`
+  - `goclsp/vm/java/lang/reflect/VMMethod.java:946`
+  - `include/jcgormet.c:142`
+
+`#4` (built-in annotation resolution — shipped):
+  - `jtrsrc/com/ivmaisoft/jcgo/ClassDictionary.java:602`
+  - `goclsp/vm/java/lang/reflect/VMReflectAnnotations.java:701`
+
+`#10` (cross-bound dispatch — shipped):
+  - `jtrsrc/com/ivmaisoft/jcgo/Context.java:82`
+  - `jtrsrc/com/ivmaisoft/jcgo/MethodDefinition.java:858`
+  - `jtrsrc/com/ivmaisoft/jcgo/MethodInvocation.java:241`
+  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:3359`
+  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:3383`
+  - `jtrsrc/com/ivmaisoft/jcgo/Parser.java:3565`
+  - `jtrsrc/com/ivmaisoft/jcgo/VariableDefinition.java:124`
+  - `jtrsrc/com/ivmaisoft/jcgo/VariableIdentifier.java:71`
+  - `examples/java17/E2EVerify.java:43`
+
+`#12` (iconv multi-byte charsets — shipped):
+  - `jtrsrc/com/ivmaisoft/jcgo/Names.java:1435`
+  - `include/jcgoiconv.c:5`
+  - `examples/java17/E2EVerify.java:237`
+
+Suspected status: every entry above is descriptive doc on shipped
+work, not pending work — verified against TODO.md's `[x]` items and
+against the surrounding code, which in each case implements what the
+comment describes. Recommendation: rewrite each comment to drop
+"TODO" (e.g. "Slice #N: ..." or just descriptive prose), so future
+greps for unfinished work return clean. One comment to keep tagged
+as actually-partial: `MethodDefinition.java:858` reads "TODO #10
+partial:" — verify whether that's still partial or now full.
 
 ### Won't do
 

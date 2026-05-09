@@ -1570,9 +1570,14 @@ d : new PrimaryFieldAccess(a, c));
 		// LocalVariableDecl in the assignCandidate (e.g.
 		// `T x = (T) switch(...);`) keeps its scope visible to the
 		// enclosing block — Block would shadow it.
-		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(assignCandidate);
-		if (hr.hoisted) {
-			return new Seq(hr.preambles,
+		MethodRefHoister.Result mrh = MethodRefHoister.hoist(assignCandidate);
+		Term afterMref = mrh.rewrittenRoot;
+		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(afterMref);
+		if (mrh.hoisted || hr.hoisted) {
+			Term preambles = mrh.hoisted && hr.hoisted
+				? new Seq(mrh.preambles, hr.preambles)
+				: (mrh.hoisted ? mrh.preambles : hr.preambles);
+			return new Seq(preambles,
 				new ExprStatement(hr.rewrittenRoot));
 		}
 		z = new ExprStatement(assignCandidate);
@@ -2362,9 +2367,14 @@ d : new PrimaryFieldAccess(a, c));
 		Expect(9);
 		// Slice 36: hoist switch-expression args inside the throw
 		// expression (e.g. `throw new RE("x:" + switch(x){...}));`).
-		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(b);
-		if (hr.hoisted) {
-			return new Block(new Seq(hr.preambles,
+		MethodRefHoister.Result mrh = MethodRefHoister.hoist(b);
+		Term afterMref = mrh.rewrittenRoot;
+		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(afterMref);
+		if (mrh.hoisted || hr.hoisted) {
+			Term preambles = mrh.hoisted && hr.hoisted
+				? new Seq(mrh.preambles, hr.preambles)
+				: (mrh.hoisted ? mrh.preambles : hr.preambles);
+			return new Block(new Seq(preambles,
 				new ThrowStatement(hr.rewrittenRoot)));
 		}
 		z = new ThrowStatement(b);
@@ -2420,9 +2430,14 @@ d : new PrimaryFieldAccess(a, c));
 		Expect(9);
 		// Slice 36: hoist switch-expression args inside the return
 		// expression (e.g. `return f(switch(x){...});`).
-		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(b);
-		if (hr.hoisted) {
-			return new Block(new Seq(hr.preambles,
+		MethodRefHoister.Result mrh = MethodRefHoister.hoist(b);
+		Term afterMref = mrh.rewrittenRoot;
+		SwitchArgHoister.Result hr = SwitchArgHoister.hoist(afterMref);
+		if (mrh.hoisted || hr.hoisted) {
+			Term preambles = mrh.hoisted && hr.hoisted
+				? new Seq(mrh.preambles, hr.preambles)
+				: (mrh.hoisted ? mrh.preambles : hr.preambles);
+			return new Block(new Seq(preambles,
 				new ReturnStatement(hr.rewrittenRoot)));
 		}
 		z = new ReturnStatement(b);

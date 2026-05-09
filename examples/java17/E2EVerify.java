@@ -234,6 +234,17 @@ public class E2EVerify {
     System.out.println("is42(99) = " + is42.test(Integer.valueOf(99)));
     System.out.println("rcv-evals after two SAM calls = " + rcvCounter);
 
+    // Method-call-shape receiver: `(bumpAndGet42())::equals` (no cast).
+    // Receiver's type isn't syntactically derivable; the parse-time
+    // MethodRefHoister lifts it to a `var $mref$rcv$h$N = ...;` local
+    // declaration before the surrounding statement so the receiver
+    // becomes a single-name reference, evaluating exactly once.
+    rcvCounter = 0;
+    Booler is42mc = (bumpAndGet42())::equals;
+    System.out.println("is42mc(42) = " + is42mc.test(Integer.valueOf(42)));
+    System.out.println("is42mc(99) = " + is42mc.test(Integer.valueOf(99)));
+    System.out.println("mc rcv-evals after two SAM calls = " + rcvCounter);
+
     // TODO #12: charset round-trip via OS code page. Shift_JIS isn't
     // in classpath-0.93's pure-Java set; the iconv shim routes the
     // call through Win32 MultiByteToWideChar / WideCharToMultiByte.
