@@ -36,8 +36,9 @@ cd .build_tmp\dlls-gc-%ARCH%-%SYST%
 copy /Y gcdll.lib ..\..\libs\%ARCH%\%SYST%\ || exit /b 1
 cd ..\..
 
-@rem Build winmain (wide-char variant):
+@rem Build winmain (multibyte and wide-char variants):
 cd libs\%ARCH%\%SYST%
+%CC% -W3 -MT -DWINMAIN_SETLOCALE -Zl -c -Fomwinmain ..\..\..\miscsrc\winmain\winmain.c /nologo || exit /b 1
 %CC% -W3 -MT -DWINMAIN_SETLOCALE -DWINMAIN_WCHAR -Zl -c -Fowwinmain ..\..\..\miscsrc\winmain\winmain.c /nologo || exit /b 1
 cd ..\..\..
 
