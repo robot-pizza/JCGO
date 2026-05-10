@@ -71,9 +71,16 @@ if (-not (Test-Path $zipPath)) {
 # Build release notes from commits since the previous tag. First
 # release in the project will have no previous tag -- fall back to
 # a placeholder.
-$prevTag = & git describe --tags --abbrev=0 --match "v*" 2>$null
-if ($LASTEXITCODE -eq 0 -and $prevTag) {
-    $prevTag = $prevTag.Trim()
+#
+# We use `git tag --list` rather than `git describe --tags`: the
+# latter writes "fatal: No names found" to stderr when there are no
+# tags, which PS 5.1 promotes to a terminating error under
+# $ErrorActionPreference = "Stop" even with `2>$null`. `git tag`
+# exits 0 with empty output when there are no matches.
+$tags = @(& git tag --list "v*" --sort=-v:refname)
+ExitOnFail "git tag --list"
+if ($tags.Count -gt 0) {
+    $prevTag = $tags[0].Trim()
     $log = (& git log --pretty="format:- %s" "$prevTag..HEAD") | Out-String
     if ($log.Trim()) {
         $notes = $log.Trim()
