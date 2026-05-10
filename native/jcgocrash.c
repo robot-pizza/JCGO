@@ -45,6 +45,30 @@
 #include <signal.h>
 #include <string.h>
 
+#include "jcgocrash.h"
+
+/* Internal cap on captured frames. Frames beyond this are dropped;
+ * the linked list the callback sees just ends earlier. 512 is well
+ * beyond any real stack depth -- runaway recursion crashes before
+ * that anyway. */
+#define JCGO_CRASH_MAX_FRAMES 512
+
+/* All crash-time state is in static (BSS) storage. Using the heap or
+ * a large stack frame during a SIGSEGV / STACK_OVERFLOW is asking
+ * for a second crash inside the handler. */
+static jcgo_crash_frame_t  jcgo_crash_frame_pool[JCGO_CRASH_MAX_FRAMES];
+static jcgo_crash_info_t   jcgo_crash_info;
+static char                jcgo_crash_stk_path_buf[MAX_PATH];
+
+static jcgo_crash_callback_t jcgo_crash_post_cb;
+static void                 *jcgo_crash_post_vpcb;
+
+void jcgo_crash_set_callback(jcgo_crash_callback_t cb, void *vpcb)
+{
+    jcgo_crash_post_cb   = cb;
+    jcgo_crash_post_vpcb = vpcb;
+}
+
 /* The CONTEXT record's instruction/stack-pointer fields are arch-named
  * (Rip/Rsp on x64, Eip/Esp on x86). RtlLookupFunctionEntry and
  * RtlVirtualUnwind only exist on x64, so the full stack walk below
@@ -101,43 +125,38 @@ static void jcgo_crash_build_stk_path(char *out, size_t cap)
     else     strncat(out, ".stk", cap - strlen(out) - 1);
 }
 
-static void jcgo_crash_dump(EXCEPTION_POINTERS *ep)
+/*
+ * Walk the faulting thread's stack, fill jcgo_crash_info + the
+ * frame pool. Does not touch stderr or the .stk file -- formatting
+ * lives in jcgo_crash_format.
+ */
+static void jcgo_crash_collect(EXCEPTION_POINTERS *ep)
 {
-    char path[MAX_PATH];
-    FILE *f;
     HMODULE mod;
     DWORD64 modBase;
-    char head[512];
-    DWORD code;
-    void *addr;
-    HANDLE proc;
+    HANDLE  proc;
     CONTEXT ctx;
-    char buf[1024];
-    char symBuf[sizeof(SYMBOL_INFO) + 512];
+    char    symBuf[sizeof(SYMBOL_INFO) + 512];
     SYMBOL_INFO *sym;
+    jcgo_crash_frame_t *tail;
+    int poolIdx;
     int n;
-    DWORD64 prev_pc;
-    int prev_count;
 
-    jcgo_crash_build_stk_path(path, sizeof(path));
-    f = fopen(path, "w");
-    if (f) fprintf(stderr, "[jcgo_crash] writing %s\n", path);
-    else   fprintf(stderr, "[jcgo_crash] fopen(%s) failed\n", path);
-    fflush(stderr);
+    ZeroMemory(&jcgo_crash_info, sizeof(jcgo_crash_info));
 
-    mod = GetModuleHandleA(NULL);
+    mod     = GetModuleHandleA(NULL);
     modBase = (DWORD64)mod;
-    code = ep->ExceptionRecord->ExceptionCode;
-    addr = ep->ExceptionRecord->ExceptionAddress;
-    snprintf(head, sizeof(head),
-             "ERROR crash %s (0x%08lX) at %p (offset 0x%llx)\n"
-             "Module base = 0x%llx\n",
-             jcgo_crash_exception_name(code),
-             (unsigned long)code, addr,
-             (unsigned long long)((DWORD64)addr - modBase),
-             (unsigned long long)modBase);
-    if (f) fputs(head, f);
-    fputs(head, stderr);
+
+    jcgo_crash_info.code        = ep->ExceptionRecord->ExceptionCode;
+    jcgo_crash_info.code_name   = jcgo_crash_exception_name(
+                                      jcgo_crash_info.code);
+    jcgo_crash_info.fault_addr  = ep->ExceptionRecord->ExceptionAddress;
+    jcgo_crash_info.module_base = (unsigned long long)modBase;
+    jcgo_crash_info.stk_path    = jcgo_crash_stk_path_buf;
+    jcgo_crash_info.frames      = NULL;
+    jcgo_crash_info.frame_count = 0;
+    jcgo_crash_build_stk_path(jcgo_crash_stk_path_buf,
+                              sizeof(jcgo_crash_stk_path_buf));
 
     proc = GetCurrentProcess();
     SymSetOptions(SymGetOptions() | SYMOPT_LOAD_LINES
@@ -145,69 +164,64 @@ static void jcgo_crash_dump(EXCEPTION_POINTERS *ep)
                                   | SYMOPT_UNDNAME);
     SymInitialize(proc, NULL, TRUE);
 
-    if (f) fputs("Frames (PC | offset-from-base | symbol):\n", f);
-    fputs("Frames (PC | offset-from-base | symbol):\n", stderr);
-    ctx = *ep->ContextRecord;
-    sym = (SYMBOL_INFO *)symBuf;
-    prev_pc = 0;
-    prev_count = 0;
+    ctx     = *ep->ContextRecord;
+    sym     = (SYMBOL_INFO *)symBuf;
+    tail    = NULL;
+    poolIdx = 0;
+
     for (n = 0; n < 4096; n++) {
         DWORD64 pc;
-        const char *symName;
         DWORD64 disp;
-        char modName[MAX_PATH];
-        char lineInfo[256];
         IMAGEHLP_LINE64 line;
         DWORD lineDisp;
         IMAGEHLP_MODULE64 mi;
+        jcgo_crash_frame_t *node;
+        const char *symName  = "?";
+        const char *modName  = "?";
+        const char *fileName = "";
+        unsigned long lineNum = 0;
 
         pc = JCGO_CRASH_IP(ctx);
         if (pc == 0) break;
-        symName = "?";
-        disp = 0;
-        modName[0] = '?';
-        modName[1] = 0;
-        lineInfo[0] = 0;
 
         ZeroMemory(sym, sizeof(symBuf));
         sym->SizeOfStruct = sizeof(SYMBOL_INFO);
-        sym->MaxNameLen = 511;
-        if (SymFromAddr(proc, pc, &disp, sym)) {
-            symName = sym->Name;
-        }
+        sym->MaxNameLen   = 511;
+        disp = 0;
+        if (SymFromAddr(proc, pc, &disp, sym)) symName = sym->Name;
+
         ZeroMemory(&line, sizeof(line));
         line.SizeOfStruct = sizeof(line);
         lineDisp = 0;
         if (SymGetLineFromAddr64(proc, pc, &lineDisp, &line)) {
-            snprintf(lineInfo, sizeof(lineInfo), " (%s:%lu)",
-                     line.FileName, (unsigned long)line.LineNumber);
+            fileName = line.FileName ? line.FileName : "";
+            lineNum  = (unsigned long)line.LineNumber;
         }
+
         ZeroMemory(&mi, sizeof(mi));
         mi.SizeOfStruct = sizeof(mi);
-        if (SymGetModuleInfo64(proc, pc, &mi)) {
-            snprintf(modName, sizeof(modName), "%s", mi.ModuleName);
-        }
-        if (pc == prev_pc) {
-            prev_count++;
+        if (SymGetModuleInfo64(proc, pc, &mi)) modName = mi.ModuleName;
+
+        /* Collapse runs of identical PCs into repeat_count on the
+         * last allocated frame. */
+        if (tail && tail->pc == (unsigned long long)pc) {
+            tail->repeat_count++;
         } else {
-            if (prev_count > 0) {
-                snprintf(buf, sizeof(buf),
-                  "        ... previous frame repeated %d more time(s) ...\n",
-                  prev_count);
-                if (f) fputs(buf, f);
-                fputs(buf, stderr);
-            }
-            snprintf(buf, sizeof(buf),
-                     "  #%-4d 0x%llx  +0x%llx  %s!%s+0x%llx%s\n",
-                     n,
-                     (unsigned long long)pc,
-                     (unsigned long long)(pc - modBase),
-                     modName, symName,
-                     (unsigned long long)disp, lineInfo);
-            if (f) fputs(buf, f);
-            fputs(buf, stderr);
-            prev_pc = pc;
-            prev_count = 0;
+            if (poolIdx >= JCGO_CRASH_MAX_FRAMES) break;
+            node = &jcgo_crash_frame_pool[poolIdx++];
+            node->next             = NULL;
+            node->pc               = (unsigned long long)pc;
+            node->offset_from_base = (unsigned long long)(pc - modBase);
+            node->sym_displacement = (unsigned long long)disp;
+            node->line             = lineNum;
+            node->repeat_count     = 0;
+            snprintf(node->module, sizeof(node->module), "%s", modName);
+            snprintf(node->symbol, sizeof(node->symbol), "%s", symName);
+            snprintf(node->file,   sizeof(node->file),   "%s", fileName);
+            if (tail) tail->next        = node;
+            else      jcgo_crash_info.frames = node;
+            tail = node;
+            jcgo_crash_info.frame_count++;
         }
 
 #if JCGO_CRASH_HAS_UNWIND
@@ -238,9 +252,79 @@ static void jcgo_crash_dump(EXCEPTION_POINTERS *ep)
         break;
 #endif
     }
+
     SymCleanup(proc);
+}
+
+/*
+ * Render the collected struct to a FILE* (the .stk file or stderr).
+ * Output format kept compatible with prior releases so anything
+ * parsing .stk files keeps working.
+ */
+static void jcgo_crash_format(FILE *out, const jcgo_crash_info_t *info)
+{
+    const jcgo_crash_frame_t *fr;
+    int n;
+    char buf[1024];
+
+    fprintf(out,
+            "ERROR crash %s (0x%08lX) at %p (offset 0x%llx)\n"
+            "Module base = 0x%llx\n",
+            info->code_name,
+            info->code,
+            info->fault_addr,
+            (unsigned long long)((DWORD64)info->fault_addr
+                                 - info->module_base),
+            info->module_base);
+    fputs("Frames (PC | offset-from-base | symbol):\n", out);
+
+    n = 0;
+    for (fr = info->frames; fr; fr = fr->next) {
+        char lineInfo[260];
+        if (fr->file[0] && fr->line > 0) {
+            snprintf(lineInfo, sizeof(lineInfo),
+                     " (%s:%lu)", fr->file, fr->line);
+        } else {
+            lineInfo[0] = 0;
+        }
+        snprintf(buf, sizeof(buf),
+                 "  #%-4d 0x%llx  +0x%llx  %s!%s+0x%llx%s\n",
+                 n, fr->pc, fr->offset_from_base,
+                 fr->module, fr->symbol,
+                 fr->sym_displacement, lineInfo);
+        fputs(buf, out);
+        if (fr->repeat_count > 0) {
+            snprintf(buf, sizeof(buf),
+                "        ... previous frame repeated %d more time(s) ...\n",
+                fr->repeat_count);
+            fputs(buf, out);
+        }
+        n++;
+    }
+}
+
+static void jcgo_crash_dump(EXCEPTION_POINTERS *ep)
+{
+    FILE *f;
+
+    jcgo_crash_collect(ep);
+
+    f = fopen(jcgo_crash_info.stk_path, "w");
+    if (f) fprintf(stderr, "[jcgo_crash] writing %s\n",
+                   jcgo_crash_info.stk_path);
+    else   fprintf(stderr, "[jcgo_crash] fopen(%s) failed\n",
+                   jcgo_crash_info.stk_path);
     fflush(stderr);
-    if (f) fclose(f);
+
+    if (f) {
+        jcgo_crash_format(f, &jcgo_crash_info);
+        fclose(f);
+    } else {
+        /* Tell the callback we didn't write anything. */
+        jcgo_crash_stk_path_buf[0] = '\0';
+    }
+    jcgo_crash_format(stderr, &jcgo_crash_info);
+    fflush(stderr);
 }
 
 static LONG WINAPI jcgo_crash_filter(EXCEPTION_POINTERS *ep)
@@ -249,6 +333,9 @@ static LONG WINAPI jcgo_crash_filter(EXCEPTION_POINTERS *ep)
             (unsigned long)ep->ExceptionRecord->ExceptionCode);
     fflush(stderr);
     jcgo_crash_dump(ep);
+    if (jcgo_crash_post_cb) {
+        jcgo_crash_post_cb(&jcgo_crash_info, jcgo_crash_post_vpcb);
+    }
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
