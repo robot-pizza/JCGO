@@ -14,8 +14,8 @@
 #                            release on robot-pizza/JCGO, then bumps
 #                            VERSION (minor) and pushes the bump.
 
-.PHONY: all win32-msvc win64-msvc jcgo-jar dependencies zip release \
-        clean clean-win32-msvc clean-win64-msvc clean-zip help
+.PHONY: all win32-msvc win64-msvc jcgo-jar rflg-out dependencies zip release \
+        clean clean-win32-msvc clean-win64-msvc clean-zip clean-rflg-out help
 
 all: win32-msvc win64-msvc
 
@@ -39,10 +39,16 @@ win64-msvc: dependencies
 jcgo-jar:
 	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\build-jars.ps1
 
+# Generate rflg_out/ -- translator-time inputs (reflection support
+# + properties-as-Java-source). Needs auxbin/jre/{GenRefl,JPropJav}.jar
+# and classpath-0.93/. Skips SWT entries (see build-rflg-out.ps1).
+rflg-out: dependencies jcgo-jar
+	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\build-rflg-out.ps1
+
 # Build the release artifact. Drives the full build chain (deps +
-# jars + per-arch MSVC) then stages everything into
+# jars + rflg_out + per-arch MSVC) then stages everything into
 # dist/jcgo-binaries-windows/ and zips that folder.
-zip: dependencies jcgo-jar all
+zip: dependencies jcgo-jar rflg-out all
 	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\zip-release.ps1
 
 # Cut a release: tag, attach the zip to a GitHub release, bump
@@ -51,7 +57,7 @@ zip: dependencies jcgo-jar all
 release:
 	powershell -NoProfile -ExecutionPolicy Bypass -File mkjcgo\publish-release.ps1
 
-clean: clean-win32-msvc clean-win64-msvc clean-zip
+clean: clean-win32-msvc clean-win64-msvc clean-zip clean-rflg-out
 
 clean-win32-msvc:
 	cmd /c "if exist libs\x86\msvc rmdir /s /q libs\x86\msvc"
@@ -71,6 +77,9 @@ clean-win64-msvc:
 clean-zip:
 	cmd /c "if exist dist rmdir /s /q dist"
 
+clean-rflg-out:
+	cmd /c "if exist rflg_out rmdir /s /q rflg_out"
+
 help:
 	@echo Targets:
 	@echo   all (default)     Build both win32-msvc and win64-msvc.
@@ -82,6 +91,9 @@ help:
 	@echo                     (idempotent). Auto-run before win32-msvc/win64-msvc.
 	@echo   jcgo-jar          Build jcgo.jar + auxbin/jre/*.jar (translator).
 	@echo                     Pure PowerShell; needs javac/jar on PATH.
+	@echo   rflg-out          Generate rflg_out/ via GenRefl + JPropJav.
+	@echo                     Translator-time inputs (reflection support +
+	@echo                     properties bundles). SWT entries skipped.
 	@echo   zip               Full build + dist/jcgo-binaries-windows.zip.
 	@echo   release           Tag + attach zip to a GitHub release + bump
 	@echo                     VERSION + push. Reads VERSION at repo root.
