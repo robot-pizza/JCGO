@@ -428,11 +428,11 @@ STATIC JNIEnv *CFASTCALL jcgo_jniVmAttachThread( JavaVM *vm,
     JCGO_TRY_LEAVE
     JCGO_TRY_CATCHIGNOREALL(tcb)
    }
-   if (JCGO_EXPECT_FALSE(localObjs == jnull
+   if (JCGO_EXPECT_FALSE(localObjs == jnull)
 #ifdef OBJT_java_lang_VMThread
-       || tcb->thread == jnull
+       || JCGO_EXPECT_FALSE(tcb->thread == jnull)
 #endif
-       ))
+       )
    {
     jcgo_threadDetachTCB(tcb);
     (void)JCGO_THREAD_CLOSEHND(&tcb->thrhandle);
