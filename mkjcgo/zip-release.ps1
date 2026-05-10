@@ -33,7 +33,9 @@ $Required = @(
     "dlls/x86/win32/gc.dll",
     "dlls/amd64/win32/gc64.dll",
     "stdpaths.in",
-    "rflg_out/gnu/java/locale/LocaleInformation.java"
+    "rflg_out/gnu/java/locale/LocaleInformation.java",
+    "classpath-0.93/configure",
+    "miscsrc/jpropjav"
 )
 $Missing = $Required | Where-Object { -not (Test-Path $_) }
 if ($Missing) {
@@ -51,14 +53,22 @@ if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
 # What goes in: built artifacts + consumer-facing source dirs (headers,
-# native runtime sources, classpath overrides) + generated rflg_out
-# (translator-time inputs) + stdpaths.in (default search paths used by
+# native runtime sources, classpath overrides + GNU Classpath itself,
+# miscsrc for JPropJav sources) + generated rflg_out (translator-time
+# inputs) + stdpaths.in (default search paths used by
 # `java -jar jcgo.jar @stdpaths.in`) + license/readme.
+#
+# stdpaths.in lines 33, 36, 38-40 reference miscsrc/jpropjav and
+# classpath-0.93 (incl. external/{relaxngDatatype,sax,w3c_dom}); a
+# consumer running `jcgo ... @stdpaths.in` errors on the first
+# stdlib class lookup without classpath-0.93/, hence we ship it.
 $Items = @(
     "jcgo.jar",
     "auxbin",
     "goclsp",
+    "classpath-0.93",
     "include",
+    "miscsrc",
     "native",
     "libs",
     "dlls",
