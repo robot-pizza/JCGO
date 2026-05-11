@@ -77,11 +77,30 @@ with stubs returning null/0/empty in place of real data.
   `getThreadInfoForId0` in `jcgogmt.c` is now unreferenced.
 - [x] **`ThreadInfo.getStackTrace()`** populated for the
   current thread via a synthesized `new Throwable().getStackTrace()`
-  (which doesn't re-enter the bean). Arbitrary-thread walk is
-  still empty — JCGO's runtime can't suspend-and-walk other
-  threads yet; `pthread_kill(SIGUSR2)` + sigaction handler on
-  POSIX or `SuspendThread` + `StackWalk64` on Win32 would do
-  it. Punted as separate work.
+  (which doesn't re-enter the bean). **Arbitrary-thread walk
+  shipped 2026-05-11:** `gnu_java_lang_management_VMThreadMXBeanImpl
+  __captureThreadStackTrace0__Lo` in `jcgogmt.c` drives both
+  platforms:
+   - **Win32 x64**: `SuspendThread` on the target's HANDLE,
+     `GetThreadContext`, walk via `RtlLookupFunctionEntry` +
+     `RtlVirtualUnwind` in the same loop `native/jcgocrash.c` uses,
+     `ResumeThread`. Verified manually: a spinner worker's trace
+     surfaces its user method in `ThreadDump2.spin`.
+   - **POSIX**: `pthread_kill(target, SIGUSR2)` + a sigaction
+     handler that runs on the target, captures via `backtrace()`,
+     posts a semaphore the caller is waiting on. Mutex-guarded
+     single-capture-at-a-time. Untested on POSIX (no test rig)
+     but structurally complete.
+  Java bridge: `VMThread.getVmdata()` + `VMAccessorJavaLang
+  .getVmdataVMThread(Thread)` exposes the per-thread TCB pointer
+  across the package boundary; `VMThrowable.buildStackTrace(Object
+  vmdata)` (refactored from the existing private path) renders the
+  captured PCs through the same demangling + line-resolution chain
+  Throwable uses.
+
+  Win32 x86 still returns null from the native (no
+  `RtlLookupFunctionEntry`). A `StackWalk64` fallback would close
+  that gap.
 - ~~`ThreadMXBean.dumpAllThreads()`~~ — n/a; doesn't exist in
   classpath-0.93's `ThreadMXBean` interface (Java-6 addition that
   postdates the classpath release we're built against).

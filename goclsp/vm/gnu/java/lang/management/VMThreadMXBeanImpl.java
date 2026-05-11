@@ -144,8 +144,11 @@ final class VMThreadMXBeanImpl
   // calling thread. Calling target.getStackTrace() directly would
   // re-enter ManagementFactory.getThreadMXBean().getThreadInfo(...)
   // since classpath's Thread.getStackTrace delegates to the bean,
-  // so we never go through that. For arbitrary other threads JCGO's
-  // runtime can't suspend-and-walk yet -- empty trace.
+  // so we never go through that. For arbitrary other threads we
+  // suspend the target via captureThreadStackTrace0 (Win32:
+  // SuspendThread + GetThreadContext + RtlVirtualUnwind) and feed
+  // the captured PCs through VMThrowable.buildStackTrace for the
+  // same demangling + line-resolution path as the Throwable case.
   StackTraceElement[] trace;
   if (target == Thread.currentThread())
   {
@@ -153,7 +156,24 @@ final class VMThreadMXBeanImpl
   }
   else
   {
-   trace = new StackTraceElement[0];
+   Object targetVmdata =
+        java.lang.VMAccessorJavaLang.getVmdataVMThread(target);
+   if (targetVmdata != null)
+   {
+    Object captured = captureThreadStackTrace0(targetVmdata);
+    if (captured != null)
+    {
+     trace = java.lang.VMThrowable.buildStackTrace(captured);
+    }
+    else
+    {
+     trace = new StackTraceElement[0];
+    }
+   }
+   else
+   {
+    trace = new StackTraceElement[0];
+   }
   }
   if (maxDepth >= 0 && trace.length > maxDepth)
   {
@@ -240,4 +260,14 @@ final class VMThreadMXBeanImpl
 
  private static native long getThreadCpuUserTime0(long id,
    int isUserTime); /* JVM-core */
+
+ // Cross-thread stack-walk. Suspends the target thread, captures
+ // its CONTEXT, walks via RtlVirtualUnwind on Win32 x64 (POSIX path
+ // uses pthread_kill + sigaction handler — TODO), resumes. Returns
+ // a long[] of frame PCs in the same shape VMThrowable.vmdata uses
+ // so VMThrowable.buildStackTrace can render it. Returns null when
+ // the platform doesn't support cross-thread walking or the
+ // suspend/walk failed.
+ private static native Object captureThreadStackTrace0(
+   Object vmdata); /* JVM-core */
 }

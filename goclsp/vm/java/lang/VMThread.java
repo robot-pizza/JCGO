@@ -196,6 +196,15 @@ final class VMThread /* hard-coded class name */
   this.thread = thread;
  }
 
+ // Opaque TCB handle of the underlying native thread. Used by the
+ // gnu.java.lang.management bridge to drive an arbitrary-thread
+ // stack walk via VMThrowable.buildStackTrace. Returns null when
+ // the thread hasn't started or has been collected.
+ Object getVmdata()
+ {
+  return vmdata;
+ }
+
  static void create(Thread thread, long stacksize)
  {
   VMThread vt = new VMThread(thread);

@@ -128,6 +128,16 @@ public final class VMAccessorJavaLang
   return VMThread.getTotalStartedCount();
  }
 
+ // Cross-package accessor for the per-Thread native-side TCB
+ // handle. Read by gnu.java.lang.management's ThreadInfo bridge to
+ // walk an arbitrary thread's stack via VMThrowable.buildStackTrace.
+ // Returns null when the thread hasn't started or has terminated.
+ public static Object getVmdataVMThread(Thread thread)
+ {
+  VMThread vt = thread != null ? thread.vmThread : null;
+  return vt != null ? vt.getVmdata() : null;
+ }
+
  public static boolean hasClassInitializerVMClass(Class klass)
  {
   return VMClass.hasClassInitializer(klass);

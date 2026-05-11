@@ -81,7 +81,18 @@ final class VMThrowable /* hard-coded class name */
 
  StackTraceElement[] getStackTrace(Throwable throwable)
  {
-  Object vmdata = this.vmdata;
+  return buildStackTrace(this.vmdata);
+ }
+
+ // Cross-package bridge — same loop as the Throwable getStackTrace
+ // path, but operates on a directly-supplied vmdata (jlongArr of
+ // PCs) instead of `this.vmdata`. Used by VMThreadMXBeanImpl when
+ // walking a thread other than the caller via a suspend-and-walk
+ // native; that path captures PCs into a long[] in the same shape
+ // VMThrowable.fillInStackTrace0 produces, so the rendering logic
+ // is shared.
+ public static StackTraceElement[] buildStackTrace(Object vmdata)
+ {
   int count = vmdata != null ? getStackTraceLen0(vmdata) : 0;
   StackTraceElement[] elements = new StackTraceElement[count];
   for (int i = 0; i < count; i++)
@@ -92,12 +103,6 @@ final class VMThrowable /* hard-coded class name */
    String[] decoded = decodeMangledName(mangled);
    int lineNum = lookupLine0(vmdata, i);
    if (lineNum <= 0) lineNum = -1;
-   // Prefer DbgHelp's actual source filename — that's the .java
-   // path when JCGO emitted #line pragmas (the default), and the
-   // generated .c path when run with -no-line-info. Falls back
-   // to a synthesized `<class>.java` only when the resolver had
-   // no debug info at all (e.g. POSIX builds with no DWARF
-   // reader).
    byte[] fileBytes = lookupFile0(vmdata, i);
    String fileName;
    if (fileBytes != null && fileBytes.length > 0)
