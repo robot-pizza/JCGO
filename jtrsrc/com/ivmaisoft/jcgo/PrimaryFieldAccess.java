@@ -79,6 +79,15 @@ final class PrimaryFieldAccess extends LexNode {
             c.lvalue = false;
             c.setOnly = false;
             terms[0].processPass1(c);
+            // Issue #149: when the receiver is a chained
+            // generic-method call whose erased return is Object (e.g.
+            // `lines.get(0)` where lines is List<Line>), substitute
+            // the receiver with a cast to the captured arg type so
+            // field resolution works. Without this `(...).indent`
+            // looks up the field on Object and fails.
+            Term substituted = MethodInvocation
+                    .trySubstituteChainedGenericReturn(terms[0], c);
+            if (substituted != null) terms[0] = substituted;
             ClassDefinition aclass = terms[0].exprType().receiverClass();
             String name = terms[1].dottedName();
             fieldVar = aclass.getField(name, c.forClass);

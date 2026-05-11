@@ -175,8 +175,50 @@ final class MethodInvocation extends LexNode {
             } else {
                 terms[2].processPass1(c);
             }
+            // Issue #149: after args have been processed, walk them
+            // and substitute chained generic-method-return Object
+            // expressions with their narrowed type. Without this, an
+            // arg like `kids.get(i)` (List<Control>.get → Object after
+            // erasure) makes the call-site lookup miss the
+            // `serialize(Control)` overload — javac would have
+            // inserted the implicit checkcast at codegen.
+            substituteChainedGenericArgs(terms[2], c);
             processPassOneInner(c, aclass, terms[0].actualExprType(), vecSize,
                     id);
+        }
+    }
+
+    private static void substituteChainedGenericArgs(Term argsTerm, Context c) {
+        if (argsTerm == null || !argsTerm.notEmpty()) return;
+        if (argsTerm instanceof ParameterList) {
+            // ParameterList builds a left-leaning chain: terms[0] is
+            // the head Argument, terms[1] is the tail (which may be
+            // another ParameterList or a single Argument).
+            substituteChainedGenericArgs(((ParameterList) argsTerm).terms[0], c);
+            substituteChainedGenericArgs(((ParameterList) argsTerm).terms[1], c);
+            return;
+        }
+        if (argsTerm instanceof Seq) {
+            Seq seq = (Seq) argsTerm;
+            substituteChainedGenericArgs(seq.terms[0], c);
+            substituteChainedGenericArgs(seq.terms[1], c);
+            return;
+        }
+        if (argsTerm instanceof Argument) {
+            Argument arg = (Argument) argsTerm;
+            Term inner = arg.getArgumentTerm(0);
+            // Args are wrapped in Expression — unwrap so the
+            // substitution sees the underlying MethodInvocation.
+            Term unwrapped = inner;
+            while (unwrapped instanceof Expression) {
+                unwrapped = ((Expression) unwrapped).terms[0];
+            }
+            Term substituted = trySubstituteChainedGenericReturn(unwrapped, c);
+            if (substituted != null) {
+                // Re-wrap so the AST shape (Argument → Expression →
+                // inner) is preserved.
+                arg.replaceArgTermAndRefresh(new Expression(substituted));
+            }
         }
     }
 
@@ -1298,7 +1340,13 @@ final class MethodInvocation extends LexNode {
     // *is* set (`<T> T foo()` in user code), the type-var-aware path
     // takes precedence and Map-style two-arg cases also work
     // correctly.
-    private static Term trySubstituteChainedGenericReturn(Term receiver,
+    // Issue #149: callable from PrimaryFieldAccess +
+    // substituteChainedGenericArgs so anywhere a chained
+    // generic-method return Object flows into a narrower position
+    // gets the implicit checkcast that javac inserts at codegen.
+    // Returns the cast-wrapped receiver, or null when no
+    // substitution applies (most common case — fast path stays cheap).
+    static Term trySubstituteChainedGenericReturn(Term receiver,
             Context c) {
         if (!(receiver instanceof MethodInvocation)) return null;
         MethodInvocation inner = (MethodInvocation) receiver;
