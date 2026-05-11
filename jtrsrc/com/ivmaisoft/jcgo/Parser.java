@@ -4404,6 +4404,11 @@ d : new PrimaryFieldAccess(a, c));
 		// e.g. `implements Comparable<String>`. Erased per slice 24.
 		if (t.kind == 73) {
 			consumeGenericArgs();
+			// Issue #148: signal so ImplementsTypes can propagate to
+			// ClassDeclaration for bridge synthesis. Harmless when this
+			// list is throws/permits — only ClassDeclaration reads it,
+			// and it's cleared at each class-body entry.
+			lastImplementsHadTypeArgs = true;
 		}
 		a = eraseTypeParamRef(a);
 		if (t.kind == 27) {
@@ -4431,9 +4436,27 @@ d : new PrimaryFieldAccess(a, c));
 	private static Term ImplementsTypes() {
 		Term z;
 		Expect(26);
+		// Issue #148: ClassTypeList silently erases `<...>` on every
+		// entry — without tracking we lose the signal that a named
+		// inner class like `implements ChangeListener<Boolean>` should
+		// get bridge-method synthesis. Snapshot anonExtendsParameterized
+		// before / after so we OR in any `<...>` consumed by
+		// ClassTypeList. (anonExtendsParameterized is set as a
+		// side-effect of consumeGenericArgs since the #148 fix.)
+		boolean before = lastImplementsHadTypeArgs;
+		lastImplementsHadTypeArgs = false;
 		z = ClassTypeList();
+		// preserve the flag set during ClassTypeList; ClassDeclaration
+		// reads it. The outer 'before' is kept so nested calls don't
+		// clobber a previous level (defensive).
+		if (before) lastImplementsHadTypeArgs = true;
 		return z;
 	}
+
+	// Issue #148: set true by ClassTypeList when any entry of an
+	// implements list had a `<TypeArgs>` suffix. Used by
+	// ClassDeclaration to decide whether BridgeSynthesis applies.
+	private static boolean lastImplementsHadTypeArgs;
 
 	private static Term ExtendsType() {
 		Term z;
@@ -4521,15 +4544,24 @@ d : new PrimaryFieldAccess(a, c));
 			pushed = true;
 		}
 		ObjVector permits = null;
-		boolean extendsParameterized = false;
+		boolean supertypeParameterized = false;
 		try {
 			lastExtendsHadTypeArgs = false;
+			lastImplementsHadTypeArgs = false;
 			if (t.kind == 25) {
 				c = ExtendsType();
-				extendsParameterized = lastExtendsHadTypeArgs;
+				supertypeParameterized = lastExtendsHadTypeArgs;
 			}
 			if (t.kind == 26) {
 				d = ImplementsTypes();
+				// Issue #148: a named class that just implements a
+				// parameterized interface (`class GroupChangeListener
+				// implements ChangeListener<Boolean>`) also needs
+				// bridge synthesis. Without it the user's
+				// onChange(Boolean) doesn't override the erased SAM
+				// onChange(Object), the override is dropped, the
+				// vtable slot is null, and dispatch crashes.
+				if (lastImplementsHadTypeArgs) supertypeParameterized = true;
 			}
 			if (looksLikePermits()) {
 				permits = consumePermitsClause();
@@ -4538,13 +4570,14 @@ d : new PrimaryFieldAccess(a, c));
 		} finally {
 			if (pushed) popTypeParamScope();
 		}
-		// Slice 51: when extending a parameterized supertype, walk
+		// Slice 51: when extending a parameterized supertype OR
+		// implementing a parameterized interface (Issue #148), walk
 		// the body and synthesize bridge methods for each declared
 		// method whose param list contains a non-Object reference
 		// type. Without these the analyzer doesn't recognize the
 		// covariant override and the parent's method gets
 		// devirtualized away.
-		if (extendsParameterized && e.notEmpty()) {
+		if (supertypeParameterized && e.notEmpty()) {
 			e = BridgeSynthesis.wrap(e);
 		}
 		z = new ClassDeclaration(b, c, d, e);
