@@ -136,6 +136,28 @@ final class LambdaExpression extends LexNode {
         lifted.discoverObjLeaks();
     }
 
+    // Issue #150: also forward escape-analysis callbacks that flow
+    // top-down. Without the setObjLeaks override, when an enclosing
+    // Argument decides this arg escapes and calls setObjLeaks(null)
+    // on the LambdaExpression placeholder, Term's default no-op
+    // swallows it — `lifted` (the synthesized anon-class
+    // InstanceCreation) never gets told. Stack-eligibility flag stays
+    // set, the lambda gets JCGO_STACKOBJ_NEW'd, and storing it via
+    // a setter (`textField.setOnChange(value -> ...)`) lands a stack
+    // pointer in a field that outlives the creating function. When
+    // fireChange later dereferences `onChange`, the stack memory has
+    // been reused and we crash (PC=0 if zeroed, fault inside
+    // fireChange if not).
+    void setObjLeaks(VariableDefinition v) {
+        assertCond(lifted != null);
+        lifted.setObjLeaks(v);
+    }
+
+    void setStackObjVolatile() {
+        assertCond(lifted != null);
+        lifted.setStackObjVolatile();
+    }
+
     void writeStackObjs(OutputContext oc, Term scopeTerm) {
         assertCond(lifted != null);
         lifted.writeStackObjs(oc, scopeTerm);
