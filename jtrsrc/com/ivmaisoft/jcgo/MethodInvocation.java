@@ -1221,7 +1221,7 @@ final class MethodInvocation extends LexNode {
                     isLam[i] = true;
                     LambdaExpression lam = (LambdaExpression) inner;
                     paramCt[i] = countLambdaParams(lam.getParams());
-                    shape[i] = classifyLambdaShape(lam);
+                    shape[i] = classifyLambdaShape(lam, c);
                 } else if (inner instanceof MethodReference) {
                     isLam[i] = true;
                     paramCt[i] = -1;
@@ -1635,7 +1635,7 @@ final class MethodInvocation extends LexNode {
     static final int SHAPE_VALUE = 2;
     static final int SHAPE_ANY = 3;
 
-    static int classifyLambdaShape(LambdaExpression lam) {
+    static int classifyLambdaShape(LambdaExpression lam, Context c) {
         Term body = lam.getBody();
         if (lam.isBodyBlock()) {
             return blockHasValueReturn(body) ? SHAPE_VALUE : SHAPE_VOID;
@@ -1644,16 +1644,207 @@ final class MethodInvocation extends LexNode {
         while (inner instanceof Expression) {
             inner = ((Expression) inner).terms[0];
         }
-        // MethodInvocation / Assignment / Postfix++/-- can be either
-        // — they have side effects (statement-shape) but also return a
-        // value. Without a speculative pass1, treat as ambiguous.
-        if (inner instanceof MethodInvocation
-                || inner instanceof Assignment
+        // Assignment, ++, -- always produce a value. Statement-form
+        // context (`x = 5;`) just discards the value — it's still
+        // SHAPE_VALUE for SAM-return-type matching purposes when used
+        // as a lambda body. (A SAM that returns void can still
+        // accept a value-shaped lambda body — the value gets
+        // discarded — so SHAPE_VALUE never EXCLUDES void SAMs in
+        // narrowByLambdaShapeRespectingArity. Wait, actually it
+        // does — see filter below. For Assignment / ++/-- though,
+        // both target shapes are legal per JLS 15.27, so we report
+        // SHAPE_ANY to avoid over-filtering.)
+        if (inner instanceof Assignment
                 || inner instanceof PostfixOp
                 || inner instanceof PrefixOp) {
             return SHAPE_ANY;
         }
+        if (inner instanceof MethodInvocation) {
+            // Resolve the called method's return type by name on the
+            // statically-knowable receiver class. SHAPE_VOID if every
+            // candidate by name returns void, SHAPE_VALUE if every
+            // candidate returns non-void, SHAPE_ANY if mixed / not
+            // resolvable.
+            return classifyMethodInvocationShape(
+                    (MethodInvocation) inner, c);
+        }
         return SHAPE_VALUE;
+    }
+
+    // D1: for a MethodInvocation lambda body, look up the called
+    // method's return type to decide the shape. Walk the receiver's
+    // declared class for all methods of the matching name; if every
+    // one returns void → SHAPE_VOID, if every one returns non-void →
+    // SHAPE_VALUE, else SHAPE_ANY.
+    //
+    // Handled receiver shapes (covers the common cases without
+    // running speculative pass1):
+    //   - QualifiedName single-id resolvable as class → static call.
+    //   - QualifiedName single-id matching a local variable.
+    //   - QualifiedName single-id matching a field on the enclosing
+    //     class.
+    //   - QualifiedName matching `this`.
+    //   - PrimaryFieldAccess where the access resolves to a known
+    //     field type.
+    //   - Empty receiver (unqualified call) — resolves against the
+    //     enclosing class.
+    private static int classifyMethodInvocationShape(MethodInvocation mi,
+            Context c) {
+        if (c == null) return SHAPE_ANY;
+        Term recvTerm = mi.terms[0];
+        Term nameTerm = mi.terms.length >= 2 ? mi.terms[1] : Empty.term;
+        String methodName;
+        ClassDefinition recvCls;
+        if (nameTerm.notEmpty()) {
+            // 3-arg shape: terms[0] = receiver, terms[1] = method
+            // name LexTerm, terms[2] = args.
+            methodName = nameTerm.dottedName();
+            recvCls = resolveReceiverClass(recvTerm, c);
+        } else {
+            // 2-arg shape: terms[0] = QualifiedName chain whose last
+            // segment is the method name, preceding segments are the
+            // receiver. terms[1] = Empty (marker), terms[2] = args.
+            if (!(recvTerm instanceof QualifiedName)) return SHAPE_ANY;
+            String dotted = recvTerm.dottedName();
+            if (dotted == null) return SHAPE_ANY;
+            int dot = dotted.lastIndexOf('.');
+            if (dot < 0) {
+                // Unqualified `foo(args)` — resolve in enclosing class.
+                methodName = dotted;
+                recvCls = c.currentClass;
+            } else {
+                methodName = dotted.substring(dot + 1);
+                recvCls = resolveDottedReceiver(
+                        dotted.substring(0, dot), c);
+            }
+        }
+        if (recvCls == null || methodName == null
+                || methodName.length() == 0) {
+            return SHAPE_ANY;
+        }
+        return methodNameReturnShape(recvCls, methodName, c.forClass);
+    }
+
+    // Walk the receiver expression's syntactic shape to find its
+    // statically-knowable class. Returns null when the shape isn't
+    // resolvable without running pass1.
+    //
+    // Handled shapes:
+    //   - `this` / `super`
+    //   - single-id QualifiedName as: class, local var, enclosing field
+    //   - dotted QualifiedName chains like `System.out` — first
+    //     segment resolves as class / var / field, remaining segments
+    //     walk field-access through the resolved class.
+    //   - PrimaryFieldAccess (parser sometimes emits this for dotted
+    //     receivers).
+    //   - empty receiver (unqualified call) → enclosing class.
+    private static ClassDefinition resolveReceiverClass(Term recv,
+            Context c) {
+        if (recv == null || !recv.notEmpty()) return c.currentClass;
+        Term inner = recv;
+        while (inner instanceof Expression) {
+            inner = ((Expression) inner).terms[0];
+        }
+        if (inner instanceof This) return c.currentClass;
+        if (inner instanceof Super) {
+            return c.currentClass != null
+                    ? c.currentClass.superClass() : null;
+        }
+        if (inner instanceof QualifiedName) {
+            String dotted = inner.dottedName();
+            if (dotted == null) return null;
+            return resolveDottedReceiver(dotted, c);
+        }
+        if (inner instanceof PrimaryFieldAccess) {
+            LexNode pfa = (LexNode) inner;
+            ClassDefinition fieldCls = resolveReceiverClass(pfa.terms[0], c);
+            if (fieldCls == null) return null;
+            String fieldName = pfa.terms[1] != null
+                    ? pfa.terms[1].dottedName() : null;
+            if (fieldName == null) return null;
+            VariableDefinition v = fieldCls.getField(fieldName,
+                    c.forClass);
+            if (v == null || v.exprType() == null) return null;
+            return v.exprType().signatureClass();
+        }
+        return null;
+    }
+
+    // Walk a dotted name like "System.out" left-to-right, resolving
+    // each segment in turn. The first segment may be a class, local
+    // variable, or field on the enclosing class; subsequent segments
+    // are field accesses on the running class.
+    private static ClassDefinition resolveDottedReceiver(String dotted,
+            Context c) {
+        // Common case: whole name resolves as a class
+        // (`Integer.valueOf` → java.lang.Integer, when dotted is just
+        // "Integer").
+        ClassDefinition asClass = c.resolveClass(dotted, false, false);
+        if (asClass != null) return asClass;
+        // Walk segments.
+        int dot = dotted.indexOf('.');
+        String first = dot < 0 ? dotted : dotted.substring(0, dot);
+        ClassDefinition cur;
+        boolean firstResolved = false;
+        // First segment: class lookup.
+        cur = c.resolveClass(first, false, false);
+        if (cur != null) {
+            firstResolved = true;
+        } else if (c.currentMethod != null) {
+            // First segment: local variable.
+            VariableDefinition v = c.currentMethod.getLocalVar(first);
+            if (v == null && c.currentClass != null) {
+                v = c.currentClass.getField(first, c.forClass);
+            }
+            if (v != null && v.exprType() != null) {
+                cur = v.exprType().signatureClass();
+                firstResolved = cur != null;
+            }
+        }
+        if (!firstResolved) return null;
+        // Subsequent segments: field-access walk.
+        while (dot >= 0) {
+            int next = dotted.indexOf('.', dot + 1);
+            String seg = next < 0 ? dotted.substring(dot + 1)
+                    : dotted.substring(dot + 1, next);
+            if (cur == null) return null;
+            VariableDefinition v = cur.getField(seg, c.forClass);
+            if (v == null || v.exprType() == null) return null;
+            cur = v.exprType().signatureClass();
+            dot = next;
+        }
+        return cur;
+    }
+
+    // True when EVERY method on `cls` (declared OR inherited) with
+    // the matching name returns void. False when every match returns
+    // non-void. SHAPE_ANY when the set has both or when no method is
+    // found.
+    private static int methodNameReturnShape(ClassDefinition cls,
+            String methodName, ClassDefinition forClass) {
+        boolean sawVoid = false;
+        boolean sawValue = false;
+        ClassDefinition cur = cls;
+        int safety = 0;
+        while (cur != null && safety++ < 32) {
+            java.util.Enumeration en = cur.enumerateMethodSignatures();
+            while (en.hasMoreElements()) {
+                String sig = (String) en.nextElement();
+                MethodDefinition md = cur.getMethodNoInheritance(sig);
+                if (md == null) continue;
+                if (!methodName.equals(md.id())) continue;
+                if (md.exprType().objectSize() == Type.VOID) {
+                    sawVoid = true;
+                } else {
+                    sawValue = true;
+                }
+                if (sawVoid && sawValue) return SHAPE_ANY;
+            }
+            cur = cur.superClass();
+        }
+        if (sawVoid && !sawValue) return SHAPE_VOID;
+        if (sawValue && !sawVoid) return SHAPE_VALUE;
+        return SHAPE_ANY;
     }
 
     private static boolean blockHasValueReturn(Term body) {

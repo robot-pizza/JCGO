@@ -536,23 +536,34 @@ of the documented deviations:
   `List<List<String>>`, triple-nested chains, and
   `Map<K, List<V>>.get(k).get(0)` all resolve.
 
-- [~] **D1: lambda overload by body return-type shape** — partial.
-  `classifyLambdaShape` distinguishes block-with-return (VALUE),
-  block-no-return (VOID), and expression bodies whose terminal
-  shape is a literal / arithmetic / new-instance (VALUE).
-  `narrowByLambdaShapeRespectingArity` filters same-arity FI
-  candidates by SAM-return-type vs the classified shape. Pins
-  `new X("k", () -> 9 + 1)` to `Sup<Integer>`,
-  `new X("k", () -> { return 7; })` to `Sup<Integer>`,
-  `new X("k", () -> { sink[0]++; })` to `Runnable`.
-  Residual: expression-body lambdas whose terminal is a
-  MethodInvocation / Assignment / Postfix++/-- can't be
-  disambiguated syntactically (they could be void OR value
-  depending on the called method's return) — these still surface
-  the existing "lambda needs explicit target type" error. javac
-  resolves these via speculative pass1 against each candidate;
-  JCGO's pass1 isn't easily reversible, so this case stays
-  user-disambiguated.
+- [x] **D1: lambda overload by body return-type shape.**
+  `classifyLambdaShape` distinguishes:
+  - block-with-`return EXPR;` → SHAPE_VALUE → only non-void SAMs
+  - block-no-return → SHAPE_VOID → only void SAMs
+  - expression body w/ unambiguous value shape (literal,
+    arithmetic, new) → SHAPE_VALUE
+  - expression body that's a MethodInvocation → looks up the
+    called method's return type by name on the statically-resolved
+    receiver class. SHAPE_VOID when every overload returns void
+    (`System.out.println` → Runnable), SHAPE_VALUE when every
+    overload returns non-void (`Integer.valueOf` → `Sup<Integer>`),
+    SHAPE_ANY when mixed or the receiver isn't statically
+    resolvable.
+  - Assignment / Postfix++/-- → SHAPE_ANY (both target shapes
+    legal per JLS 15.27; don't over-filter).
+
+  `resolveReceiverClass` / `resolveDottedReceiver` walk
+  dotted-name receivers segment-by-segment: first segment as
+  class / local var / enclosing field, subsequent segments as
+  field-access through the running class. Covers
+  `Integer.valueOf` (class.method) and `System.out.println`
+  (class.field.method) cleanly.
+
+  Counter-example C now resolves to javac's choice:
+  `new X("k", () -> Integer.valueOf(7))` → Sup<Integer>;
+  `new X("k", () -> System.out.println("v"))` → Runnable.
+  Parity verified — both translations emit `S=7\nR\nv` matching
+  `java Overload`.
 
 - [x] **P7: unchecked-cast lint warnings.** Per-cast `warning:`
   notice with `file (line, col)` location, matching the existing

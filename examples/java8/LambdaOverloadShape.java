@@ -4,12 +4,15 @@
 //   - block-no-return → SHAPE_VOID → only void SAMs
 //   - expression body w/ unambiguous value shape (literal,
 //     arithmetic, new) → SHAPE_VALUE
-// Residual: expression body whose terminal is a MethodInvocation /
-// Assignment / Postfix ++/-- can't be classified syntactically
-// (could be void OR value depending on the called method's
-// return) — SHAPE_ANY. javac resolves those via speculative pass1
-// inference; JCGO doesn't and surfaces the existing explicit-target
-// error there.
+//   - expression body that's a MethodInvocation → looks up the
+//     called method's return type. SHAPE_VOID when every method
+//     of that name on the receiver class returns void
+//     (`System.out.println` → Runnable), SHAPE_VALUE when every
+//     returns non-void (`Integer.valueOf` → `Sup<Integer>`),
+//     SHAPE_ANY when the set is mixed or the receiver isn't
+//     statically resolvable.
+//   - Assignment / Postfix++/-- → SHAPE_ANY (both target shapes
+//     are legal per JLS 15.27; we don't over-filter).
 
 public final class LambdaOverloadShape
 {
@@ -36,5 +39,12 @@ public final class LambdaOverloadShape
 
   // Constructor-call expression → VALUE → Sup<Integer>.
   new X("k", () -> new Integer(3));
+
+  // MethodInvocation expression bodies whose receiver class is
+  // statically resolvable:
+  //   Integer.valueOf — all overloads return Integer → VALUE → Sup
+  new X("k", () -> Integer.valueOf(7));
+  //   System.out.println — all overloads return void → VOID → Runnable
+  new X("k", () -> System.out.println("v"));
  }
 }

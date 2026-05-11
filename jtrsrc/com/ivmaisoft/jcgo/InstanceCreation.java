@@ -601,7 +601,7 @@ final class InstanceCreation extends LexNode {
                     isLam[i] = true;
                     LambdaExpression lam = (LambdaExpression) inner;
                     paramCt[i] = countLambdaParams(lam.getParams());
-                    shape[i] = MethodInvocation.classifyLambdaShape(lam);
+                    shape[i] = MethodInvocation.classifyLambdaShape(lam, c);
                 } else if (inner instanceof MethodReference) {
                     isLam[i] = true;
                     paramCt[i] = -1;
