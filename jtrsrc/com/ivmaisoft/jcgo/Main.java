@@ -223,6 +223,9 @@ public final class Main {
         } else if (option.equals("-no-line-info")) {
             dict.emitLineInfo = false;
             return true;
+        } else if (option.equals("-nowarn")) {
+            dict.noWarn = true;
+            return true;
         } else if (option.startsWith("-l") && dict.failOnClassLimit == 0) {
             dict.failOnClassLimit = (new ConstValue(option.substring(2)))
                     .getIntValue();

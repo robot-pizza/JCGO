@@ -221,6 +221,21 @@ public class Parser {
 		errDist = 0;
 	}
 
+	// P7: lint-style warning at the lookahead position. Doesn't
+	// affect error count or errDist, so reporting is purely
+	// additive. Silenced when -nowarn is set or when we're parsing
+	// a classpath / goclsp toolchain file (tool-file content isn't
+	// user code; warnings there are noise).
+	public static void Warning(String msg) {
+		if (inToolFile) return;
+		Scanner.err.Warn(msg, t.line, t.col);
+	}
+
+	public static void WarningAt(String msg, int line, int col) {
+		if (inToolFile) return;
+		Scanner.err.Warn(msg, line, col);
+	}
+
 	public static void SemError(int n) {
 		if (errDist >= minErrDist) Scanner.err.SemErr(n, token.line, token.col);
 		errDist = 0;
@@ -1002,7 +1017,15 @@ d : new PrimaryFieldAccess(a, c));
 			// don't appear in expressions at all. Route to SimpleType,
 			// which already accepts wildcards / nested args via
 			// captureGenericArgsToJls.
+			int castLine = t.line, castCol = t.col;
 			b = SimpleType();
+			// P7: lint — javac warns on `(List<String>) x` etc. because
+			// the runtime CHECKCAST can only verify the erased class
+			// (List), not the parameterization (<String>).
+			// All-wildcard generic args (e.g. `(Map<?, ?>) y`) DO verify
+			// fully at runtime against the erased class and a known
+			// "any-arg" target, so they don't warn.
+			maybeWarnUncheckedCast(b, castLine, castCol);
 		} else {
 			b = JavaExpression();
 		}
@@ -3175,6 +3198,62 @@ d : new PrimaryFieldAccess(a, c));
 			return next == 1; // identifier follows → type+id form
 		}
 		return false;
+	}
+
+	// P7: warn when a cast target has parser-captured generic args
+	// with at least one non-wildcard arg. Routes through
+	// Parser.WarningAt so -nowarn suppresses, and uses the
+	// pre-SimpleType lookahead position for accurate file:line:col.
+	private static void maybeWarnUncheckedCast(Term castTypeTerm,
+			int line, int col) {
+		Term nameTerm = nameTermOfCast(castTypeTerm);
+		if (nameTerm == null) return;
+		String capturedJls = getCapturedGenericArgs(nameTerm);
+		if (capturedJls == null) return;
+		if (allWildcardArgs(capturedJls)) return;
+		WarningAt("unchecked cast to parameterized type — runtime "
+			+ "CHECKCAST verifies the erased class only, not the "
+			+ "type-args (`<...>`). Consider `(RawType) expr` or "
+			+ "wildcards (`<?>`) if you don't need the parameter "
+			+ "checked at compile time.", line, col);
+	}
+
+	private static Term nameTermOfCast(Term castType) {
+		Term t = castType;
+		// Cast type may be wrapped in TypeWithDims for `(List<X>[])`.
+		if (t instanceof TypeWithDims) {
+			t = ((TypeWithDims) t).terms[0];
+		}
+		if (t instanceof ClassOrIfaceType) {
+			return ((ClassOrIfaceType) t).getNameTerm();
+		}
+		return null;
+	}
+
+	// Returns true if every top-level arg in a JLS-form
+	// `<arg1arg2...>` block is a wildcard (`*`, `+...`, `-...`).
+	// `(Map<?, ?>) y` doesn't warn — the cast verifies fully at
+	// runtime since the parameter slot is unconstrained.
+	private static boolean allWildcardArgs(String jls) {
+		if (jls == null || jls.length() < 2 || jls.charAt(0) != '<'
+				|| jls.charAt(jls.length() - 1) != '>') {
+			return false;
+		}
+		int i = 1;
+		int end = jls.length() - 1;
+		while (i < end) {
+			char ch = jls.charAt(i);
+			if (ch == '*') { i++; continue; }
+			if (ch == '+' || ch == '-') {
+				// `+L...;` or `-L...;` — wildcard bound, treat as wildcard.
+				int semi = jls.indexOf(';', i + 1);
+				if (semi < 0) return false;
+				i = semi + 1;
+				continue;
+			}
+			return false;
+		}
+		return true;
 	}
 
 	// We are inside `(`, just past the optional type-use annotation,

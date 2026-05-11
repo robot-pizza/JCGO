@@ -122,6 +122,12 @@ final class ClassDictionary {
 
     boolean ignoreErrs;
 
+    // P7: suppress lint-style warnings (unchecked-cast etc.).
+    // Set by `-nowarn` on the command line. Warnings are emitted to
+    // stderr by default; setting this silences them. Doesn't affect
+    // hard errors.
+    boolean noWarn;
+
     String outPath = "";
 
     MethodDefinition ourMethod;

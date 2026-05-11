@@ -196,6 +196,15 @@ public class ErrorStream {
 		StoreError(9999, line, col, s);
 	}
 
+	// P7: lint-style warning. Doesn't increment the error count
+	// (translation continues to succeed); just prints to stderr.
+	// Suppressed when Main.dict.noWarn is set via -nowarn.
+	void Warn(String s, int line, int col) {
+		if (Main.dict.noWarn) return;
+		System.err.println(fileName + " (" + line + ", " + col
+				+ ") warning: " + s);
+	}
+
 	public void Exception (String s) {
 		System.out.println(s); System.exit(1);
 	}

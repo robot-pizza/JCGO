@@ -527,13 +527,18 @@ of the documented deviations:
   JCGO's pass1 isn't easily reversible, so this case stays
   user-disambiguated.
 
-- [ ] **P7: unchecked-cast lint warnings.** javac emits a per-file
-  "uses unchecked or unsafe operations" notice when an explicit
-  cast targets a parameterized type with non-wildcard args (e.g.
-  `(List<String>) x`). JCGO has no warnings facility — adding one
-  is more infrastructure than the signal value of P7 warrants.
-  Cast erasure semantics already match javac; only the lint
-  diagnostic is missing.
+- [x] **P7: unchecked-cast lint warnings.** Per-cast `warning:`
+  notice with `file (line, col)` location, matching the existing
+  `SemErr` format. `ErrorStream.Warn` doesn't increment the
+  error count — translation succeeds, the user just gets a
+  stderr message. `Parser.Warning` / `Parser.WarningAt` skip
+  toolchain files (classpath-0.93 / goclsp) so internal casts
+  don't generate noise. Suppressed globally via `-nowarn`.
+  Wildcard-only casts (`(Map<?, ?>) x`) don't warn — they verify
+  fully at runtime against the erased class plus an unconstrained
+  parameter slot. The warnings infra is intentionally minimal but
+  extensible — next lint diagnostic (deprecation, rawtypes, etc.)
+  can ride the same path.
 
 ### D6: for-each over Iterable (closed)
 
