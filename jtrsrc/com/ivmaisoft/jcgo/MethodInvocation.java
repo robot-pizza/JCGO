@@ -1572,7 +1572,16 @@ final class MethodInvocation extends LexNode {
         return null;
     }
 
-    private static Term qualifiedNameOf(String dotted) {
+    private static Term qualifiedNameOf(String runtimeName) {
+        // JCGO's runtime class names use `$` as the inner-class
+        // separator (`Outer$Inner`); source-level QualifiedName
+        // chains expect `.` for every segment boundary. Without
+        // this translation a synthesized cast type for an inner
+        // class fails to resolve at pass1, exprType falls back to
+        // Object, and a downstream `.method()` call's
+        // class-init-trace receiver type ends up as Object —
+        // tripping the methodTraceClassInit assertion (Issue #147).
+        String dotted = runtimeName.replace('$', '.');
         Term qn = null;
         int idx = dotted.length();
         while (idx > 0) {

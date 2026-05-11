@@ -675,10 +675,36 @@ final class VariableDefinition {
                             .fatalError(c,
                                     "Incompatible types in variable definition assignment");
                 }
+                // Issue #147: a generic-method call whose erased return
+                // is Object (Map.get → V, List.get → E, ...) keeps its
+                // erased static type even when assigned to a narrower
+                // declared variable. javac inserts an implicit cast at
+                // each generic-call use-site; JCGO erases the call type
+                // but doesn't synthesize a cast on assignment. Without
+                // the clamp below, `r`'s tracked actualType is Object,
+                // which then becomes curActualClass at the next call on
+                // `r` and trips MethodDefinition.methodTraceClassInit's
+                // ourClass.isAssignableFrom(curActualClass) assertion.
+                // Narrowed to the Object→narrower case so we don't
+                // touch resType's class chain during slice-45 type-var
+                // erasure (would force premature class resolution and
+                // fail with "Cannot find class: U" on a `<U> U m(U x)`
+                // local-var declaration).
+                ExpressionType actualType0 = initializerTerm.actualExprType();
+                if (s1 == Type.CLASSINTERFACE
+                        && actualType0 != null
+                        && actualType0 != resType
+                        && actualType0.objectSize() == Type.CLASSINTERFACE
+                        && Names.JAVA_LANG_OBJECT.equals(
+                                actualType0.signatureClass().name())
+                        && !Names.JAVA_LANG_OBJECT.equals(
+                                resType.signatureClass().name())) {
+                    actualType0 = resType;
+                }
                 if (isFinalVariable()) {
-                    actualType = initializerTerm.actualExprType();
+                    actualType = actualType0;
                 } else {
-                    c.setActualType(this, initializerTerm.actualExprType());
+                    c.setActualType(this, actualType0);
                     if (initializerTerm.isNotNull()) {
                         c.setVarNotNull(this);
                     }

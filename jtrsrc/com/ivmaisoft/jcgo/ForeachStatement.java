@@ -328,7 +328,10 @@ final class ForeachStatement extends LexNode {
         return origType;
     }
 
-    private static Term qualifiedName(String dotted) {
+    private static Term qualifiedName(String runtimeName) {
+        // `$` → `.` so inner-class element types resolve at pass1.
+        // Issue #147.
+        String dotted = runtimeName.replace('$', '.');
         Term tail = Empty.newTerm();
         int idx = dotted.length();
         while (idx > 0) {

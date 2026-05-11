@@ -298,7 +298,10 @@ final class BridgeSynthesis {
         return origType;
     }
 
-    private static Term qualifiedNameOf(String dotted) {
+    private static Term qualifiedNameOf(String runtimeName) {
+        // `$` → `.` so inner-class names resolve at pass1.
+        // Issue #147.
+        String dotted = runtimeName.replace('$', '.');
         Term tail = Empty.newTerm();
         int idx = dotted.length();
         while (idx > 0) {

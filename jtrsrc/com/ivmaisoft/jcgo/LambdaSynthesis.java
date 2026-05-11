@@ -337,7 +337,12 @@ final class LambdaSynthesis {
         return base;
     }
 
-    private static Term qualifiedName(String dotted) {
+    private static Term qualifiedName(String runtimeName) {
+        // JCGO's runtime class names use `$` for inner-class
+        // boundaries; source-level QualifiedName chains want `.`
+        // between every segment. See MethodInvocation.qualifiedNameOf
+        // for the failure mode this guards against (Issue #147).
+        String dotted = runtimeName.replace('$', '.');
         Term qn = null;
         int idx = dotted.length();
         while (idx > 0) {

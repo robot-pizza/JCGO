@@ -383,7 +383,9 @@ final class MethodReference extends LexNode {
         return lifted != null && lifted.isAtomary();
     }
 
-    private static Term qualifiedName(String dotted) {
+    private static Term qualifiedName(String runtimeName) {
+        // `$` → `.` so inner-class iface names resolve. Issue #147.
+        String dotted = runtimeName.replace('$', '.');
         Term qn = null;
         int idx = dotted.length();
         while (idx > 0) {

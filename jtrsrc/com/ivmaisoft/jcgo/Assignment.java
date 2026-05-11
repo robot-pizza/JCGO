@@ -190,6 +190,24 @@ final class Assignment extends LexNode {
                         } else {
                             c.clearVarNotNull(v);
                         }
+                        // Issue #147: clamp RHS actualType to the LHS
+                        // declared type when erasure left it as Object.
+                        // See VariableDefinition.initializerPassOne for
+                        // the rationale (and why we only clamp Object,
+                        // not generic widening — premature class chain
+                        // resolution during slice-45 type-var erasure).
+                        ExpressionType lhsExprType = v.exprType();
+                        if (s0 == Type.CLASSINTERFACE
+                                && actualType2 != null
+                                && actualType2 != lhsExprType
+                                && actualType2.objectSize() == Type.CLASSINTERFACE
+                                && lhsExprType.objectSize() == Type.CLASSINTERFACE
+                                && Names.JAVA_LANG_OBJECT.equals(
+                                        actualType2.signatureClass().name())
+                                && !Names.JAVA_LANG_OBJECT.equals(
+                                        lhsExprType.signatureClass().name())) {
+                            actualType2 = lhsExprType;
+                        }
                         c.setActualType(v, actualType2);
                         v.setClassNewInstanceCall(terms[2]
                                 .getClassNewInstanceCall());

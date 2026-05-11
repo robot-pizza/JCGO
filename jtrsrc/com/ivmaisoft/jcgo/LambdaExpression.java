@@ -164,7 +164,10 @@ final class LambdaExpression extends LexNode {
         return sole;
     }
 
-    private static Term qualifiedName(String dotted) {
+    private static Term qualifiedName(String runtimeName) {
+        // `$` → `.` so inner-class iface names (`Outer$Inner`)
+        // resolve at pass1. Issue #147.
+        String dotted = runtimeName.replace('$', '.');
         Term qn = null;
         int idx = dotted.length();
         while (idx > 0) {
