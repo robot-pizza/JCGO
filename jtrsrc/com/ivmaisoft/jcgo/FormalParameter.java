@@ -95,7 +95,7 @@ final class FormalParameter extends LexNode {
     }
 
     void processPass1(Context c) {
-        if (isVarArgs && Main.dict.javaVersion < JavaVersion.JLS_50) {
+        if (isVarArgs && !c.versionAtLeast(JavaVersion.JLS_50)) {
             fatalError(c, "varargs (T...) requires -source 5 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
         }
@@ -108,6 +108,19 @@ final class FormalParameter extends LexNode {
         terms[4].processPass1(c);
         terms[1].processPass1(c);
         terms[3].processPass1(c);
+        // Quirk #2: thread the declared type's parser-captured generic
+        // args onto the parameter's VariableDefinition (same slot as
+        // local vars / fields). MethodInvocation reads this on the
+        // receiver path to substitute T → concrete type for chained
+        // generic-method calls.
+        if (terms[1] instanceof ClassOrIfaceType) {
+            Term name = ((ClassOrIfaceType) terms[1]).getNameTerm();
+            String captured = Parser.getCapturedGenericArgs(name);
+            if (captured != null) {
+                VariableDefinition v = terms[3].getVariable(false);
+                if (v != null) v.setFieldTypeCapturedArgs(captured);
+            }
+        }
         c.modifiers = oldModifiers;
     }
 

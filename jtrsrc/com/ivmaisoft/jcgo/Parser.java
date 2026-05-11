@@ -35,6 +35,22 @@ public class Parser {
 	static Token token;   // last recognized token
 	static Token t;       // lookahead token
 
+	// Standards-pass P1: set by Main.parseJavaFile when parsing a
+	// classpath-0.93 or goclsp source file. Toolchain files always
+	// behave as if -source were the highest supported level, so the
+	// goclsp overlays (which use generics, lambdas, etc.) parse
+	// independently of the user-supplied -source level.
+	static boolean inToolFile;
+
+	// Quirk-fix gate helper: true when the requested feature should
+	// be allowed at the current source level (or always allowed
+	// inside toolchain files). Wraps the
+	// `Main.dict.javaVersion >= JLS_xx` check so individual gates
+	// don't have to know about the toolchain bypass.
+	private static boolean versionAtLeast(int level) {
+		return inToolFile || Main.dict.javaVersion >= level;
+	}
+
 	// Slice 45: stack of currently-active generic type-parameter
 	// names. Each element is an ObjVector of paired entries
 	// [name, bound, name, bound, ...]. Pushed when entering a generic
@@ -979,6 +995,14 @@ d : new PrimaryFieldAccess(a, c));
 		// the inner SwitchExpression through the ParenExpression wrapper.
 		if (t.kind == 53) {
 			b = SwitchExpressionParse();
+		} else if (looksLikeGenericCast()) {
+			// Generic cast — `(List<String>) x`, `(Map<?,?>) y`,
+			// `(Foo<X>[]) z`. JavaExpression can't parse these because
+			// `<` reads as a relational operator and `?`/`extends`
+			// don't appear in expressions at all. Route to SimpleType,
+			// which already accepts wildcards / nested args via
+			// captureGenericArgsToJls.
+			b = SimpleType();
 		} else {
 			b = JavaExpression();
 		}
@@ -1210,7 +1234,7 @@ d : new PrimaryFieldAccess(a, c));
 		Term z;
 		Term c, d = Empty.term;
 		if (t.kind == 1 && peek(2).kind == 11) {
-			if (Main.dict.javaVersion < JavaVersion.JLS_210) {
+			if (!versionAtLeast(JavaVersion.JLS_210)) {
 				SemError("record patterns requires -source 21 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
@@ -1226,7 +1250,7 @@ d : new PrimaryFieldAccess(a, c));
 		InstanceOf io = new InstanceOf(a, c, d);
 		// Pattern instanceof (Java 16): optional binding identifier.
 		if (t.kind == 1 || t.kind == 7) {
-			if (Main.dict.javaVersion < JavaVersion.JLS_160) {
+			if (!versionAtLeast(JavaVersion.JLS_160)) {
 				SemError("pattern instanceof requires -source 16 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
@@ -1618,7 +1642,7 @@ d : new PrimaryFieldAccess(a, c));
 		ObjVector altTypes = null;
 		while (t.kind == 80) {
 			Get();
-			if (Main.dict.javaVersion < JavaVersion.JLS_70) {
+			if (!versionAtLeast(JavaVersion.JLS_70)) {
 				SemError("multi-catch (|) requires -source 7 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
@@ -1750,7 +1774,7 @@ d : new PrimaryFieldAccess(a, c));
 
 	private static boolean looksLikeYield() {
 		if (t.kind != 1 || !"yield".equals(t.val)) return false;
-		if (Main.dict.javaVersion < JavaVersion.JLS_140) return false;
+		if (!versionAtLeast(JavaVersion.JLS_140)) return false;
 		int k2 = peek(2).kind;
 		// Reject yield used as an identifier in plain assignment or call.
 		return k2 != 46 && k2 != 11 && k2 != 13 && k2 != 27
@@ -1760,7 +1784,7 @@ d : new PrimaryFieldAccess(a, c));
 
 	// Switch expression: `switch (E) { (case L1, L2 -> body | default -> body)+ }`
 	private static Term SwitchExpressionParse() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_140) {
+		if (!versionAtLeast(JavaVersion.JLS_140)) {
 			SemError("switch expression requires -source 14 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -1798,7 +1822,7 @@ d : new PrimaryFieldAccess(a, c));
 			// Heuristic: identifier followed by identifier with no `,` or
 			// `->` between them suggests a type-pattern label.
 			if (t.kind == 1 && peek(2).kind == 1 && peek(3).kind != 27) {
-				if (Main.dict.javaVersion < JavaVersion.JLS_210) {
+				if (!versionAtLeast(JavaVersion.JLS_210)) {
 					SemError("pattern switch requires -source 21 or higher (got "
 						+ JavaVersion.format(Main.dict.javaVersion) + ")");
 				}
@@ -1812,7 +1836,7 @@ d : new PrimaryFieldAccess(a, c));
 				}
 			} else if (t.kind == 1 && peek(2).kind == 11) {
 				// Record pattern (Java 21, JEP 440): `case Type(...)`.
-				if (Main.dict.javaVersion < JavaVersion.JLS_210) {
+				if (!versionAtLeast(JavaVersion.JLS_210)) {
 					SemError("record patterns requires -source 21 or higher (got "
 						+ JavaVersion.format(Main.dict.javaVersion) + ")");
 				}
@@ -1925,7 +1949,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static Term parseArrowCaseTail(ObjVector labels) {
-		if (Main.dict.javaVersion < JavaVersion.JLS_140) {
+		if (!versionAtLeast(JavaVersion.JLS_140)) {
 			SemError("arrow case form requires -source 14 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -2161,7 +2185,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static boolean looksLikeGenericVarDecl() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_50) return false;
+		if (!versionAtLeast(JavaVersion.JLS_50)) return false;
 		if (t.kind != 1 && t.kind != 7) return false;
 		int idx = 2;
 		while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
@@ -2221,7 +2245,7 @@ d : new PrimaryFieldAccess(a, c));
 	// `try (resources) body` form. catch/finally combinations and var
 	// resources are not yet supported.
 	private static Term TryWithResources() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_70) {
+		if (!versionAtLeast(JavaVersion.JLS_70)) {
 			SemError("try-with-resources requires -source 7 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -2254,7 +2278,7 @@ d : new PrimaryFieldAccess(a, c));
 	// Detection: bare identifier followed by `;` or `)` (no `=`).
 	private static Term parseTwrResource() {
 		if (t.kind == 1 && (peek(2).kind == 9 || peek(2).kind == 12)) {
-			if (Main.dict.javaVersion < JavaVersion.JLS_90) {
+			if (!versionAtLeast(JavaVersion.JLS_90)) {
 				SemError("try-with-resources on an existing variable "
 					+ "requires -source 9 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
@@ -2496,14 +2520,51 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	// Foreach lookahead helper (slice 1).
+	// Detects shape: (Type) Identifier ':' where Type is either a
+	// primitive keyword or an Identifier(.Identifier)* optionally
+	// followed by `<...>` generic args. Slice covers qualified type
+	// names like `for (com.foo.Window w : it)` — original slice-1
+	// shape only recognized a single-identifier type.
 	private static boolean looksLikeForeach() {
 		int k1 = t.kind;
 		boolean prim = k1 >= 35 && k1 <= 42;
 		boolean ident = k1 == 1 || k1 == 7;
 		if (!prim && !ident) return false;
-		Token p2 = peek(2);
-		if (p2.kind != 1 && p2.kind != 7) return false;
-		return peek(3).kind == 57;
+		int idx = 2;
+		if (ident) {
+			// Walk past dotted qualifier (`a.b.c`).
+			while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+				idx += 2;
+			}
+			// Optional `<...>` generic args (balanced; handles >>, >>>).
+			if (peek(idx).kind == 73) {
+				int depth = 1;
+				idx++;
+				int safety = 0;
+				while (depth > 0) {
+					int k = peek(idx).kind;
+					if (k == 0) return false;
+					if (k == 11 || k == 12 || k == 9 || k == 28
+							|| k == 29) {
+						return false;
+					}
+					if (k == 73) depth++;
+					else if (k == 75) depth--;
+					else if (k == 70) depth -= 2;
+					else if (k == 69) depth -= 3;
+					if (depth < 0) return false;
+					idx++;
+					if (++safety > 256) return false;
+				}
+			}
+		}
+		// Optional `[]` array dims on the type.
+		while (peek(idx).kind == 43 && peek(idx + 1).kind == 44) {
+			idx += 2;
+		}
+		// Loop variable name then `:`.
+		if (peek(idx).kind != 1 && peek(idx).kind != 7) return false;
+		return peek(idx + 1).kind == 57;
 	}
 
 	private static Term DoStatement() {
@@ -2896,7 +2957,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static Term MethodRefParse() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+		if (!versionAtLeast(JavaVersion.JLS_80)) {
 			SemError("method reference requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -3006,7 +3067,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static Term LambdaParse() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+		if (!versionAtLeast(JavaVersion.JLS_80)) {
 			SemError("lambda expression requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -3061,7 +3122,7 @@ d : new PrimaryFieldAccess(a, c));
 		boolean isVar = t.kind == 1 && "var".equals(t.val)
 			&& peek(2).kind == 1;
 		if (isVar) {
-			if (Main.dict.javaVersion < JavaVersion.JLS_110) {
+			if (!versionAtLeast(JavaVersion.JLS_110)) {
 				SemError("var in lambda parameter requires -source 11 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
@@ -3114,6 +3175,49 @@ d : new PrimaryFieldAccess(a, c));
 			return next == 1; // identifier follows → type+id form
 		}
 		return false;
+	}
+
+	// We are inside `(`, just past the optional type-use annotation,
+	// dispatching from UnaryWithPara. Return true if the parens contain
+	// a cast type with generic args — `Identifier (.Identifier)* <...>
+	// ([])* )` followed by a unary-expression-starter token. Routing
+	// these to SimpleType lets `<...>` consume wildcards / nested args
+	// instead of letting JavaExpression try to parse `<` as relational.
+	//
+	// Termination tokens that can't legitimately appear inside a cast
+	// type (`(`, `)`, `;`, `{`, `}`) abort the lookahead so unrelated
+	// forms like `(a < b)` (paren-wrapped comparison) don't get
+	// misclassified.
+	private static boolean looksLikeGenericCast() {
+		if (t.kind != 1) return false;
+		int idx = 2;
+		while (peek(idx).kind == 13 && peek(idx + 1).kind == 1) {
+			idx += 2;
+		}
+		if (peek(idx).kind != 73) return false;
+		int depth = 1;
+		idx++;
+		int safety = 0;
+		while (depth > 0) {
+			int k = peek(idx).kind;
+			if (k == 0) return false;
+			if (k == 11 || k == 12 || k == 9 || k == 28 || k == 29) {
+				return false;
+			}
+			if (k == 73) depth++;
+			else if (k == 75) depth--;
+			else if (k == 70) depth -= 2;
+			else if (k == 69) depth -= 3;
+			if (depth < 0) return false;
+			idx++;
+			if (++safety > 256) return false;
+		}
+		while (peek(idx).kind == 43 && peek(idx + 1).kind == 44) {
+			idx += 2;
+		}
+		if (peek(idx).kind != 12) return false;
+		int after = peek(idx + 1).kind;
+		return after == 53 || set[6][after];
 	}
 
 	private static Term FieldDeclTail(Term a, Term b, Term c) {
@@ -3310,7 +3414,7 @@ d : new PrimaryFieldAccess(a, c));
 	// declaration-annotation buffer — type-use annotations don't count
 	// as declared on the surrounding declaration.
 	private static void TypeUseAnnotationGroup() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+		if (!versionAtLeast(JavaVersion.JLS_80)) {
 			SemError("type-use annotation requires -source 8 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -3450,7 +3554,7 @@ d : new PrimaryFieldAccess(a, c));
 	// the param name (String), 2*i+1 is the dotted bound name
 	// (String) or null when unbounded.
 	private static ObjVector consumeTypeParamList() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+		if (!versionAtLeast(JavaVersion.JLS_50)) {
 			SemError("generic type parameters requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -3775,7 +3879,7 @@ d : new PrimaryFieldAccess(a, c));
 	// when one closes multiple generic-arg layers the consumer
 	// decrements depth by 2 / 3 accordingly.
 	private static void consumeGenericArgs() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+		if (!versionAtLeast(JavaVersion.JLS_50)) {
 			SemError("generic type arguments requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -3989,7 +4093,7 @@ d : new PrimaryFieldAccess(a, c));
 			return new AccModifier(AccModifier.NON_SEALED);
 		}
 		if (looksLikeSealed()) {
-			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+			if (!versionAtLeast(JavaVersion.JLS_170)) {
 				SemError("sealed requires -source 17 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
@@ -4356,7 +4460,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static void consumeNonSealed() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+		if (!versionAtLeast(JavaVersion.JLS_170)) {
 			SemError("non-sealed requires -source 17 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -4371,7 +4475,7 @@ d : new PrimaryFieldAccess(a, c));
 	// `permits A, B, C`. Returns an ObjVector of String. Annotations
 	// preceding each name (JSR 308 type-use) are walked but ignored.
 	private static ObjVector consumePermitsClause() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+		if (!versionAtLeast(JavaVersion.JLS_170)) {
 			SemError("sealed/permits requires -source 17 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -4405,7 +4509,7 @@ d : new PrimaryFieldAccess(a, c));
 			return new AccModifier(AccModifier.NON_SEALED);
 		}
 		if (looksLikeSealed()) {
-			if (Main.dict.javaVersion < JavaVersion.JLS_170) {
+			if (!versionAtLeast(JavaVersion.JLS_170)) {
 				SemError("sealed requires -source 17 or higher (got "
 					+ JavaVersion.format(Main.dict.javaVersion) + ")");
 			}
@@ -4496,7 +4600,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static Term EnumDeclaration() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+		if (!versionAtLeast(JavaVersion.JLS_50)) {
 			SemError("enum declaration requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -4667,7 +4771,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static Term RecordDeclaration() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_160) {
+		if (!versionAtLeast(JavaVersion.JLS_160)) {
 			SemError("record declaration requires -source 16 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -4736,7 +4840,7 @@ d : new PrimaryFieldAccess(a, c));
 	// override. Static-constant element declarations (`int X = 5;`) are still
 	// parsed and dropped because they don't participate in proxy dispatch.
 	private static Term AnnotationTypeDeclaration() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+		if (!versionAtLeast(JavaVersion.JLS_50)) {
 			SemError("@interface (annotation type) requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -4977,7 +5081,7 @@ d : new PrimaryFieldAccess(a, c));
 
 	private static void Annotation() {
 		Expect(10);
-		if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+		if (!versionAtLeast(JavaVersion.JLS_50)) {
 			SemError("annotation requires -source 5 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -4991,7 +5095,7 @@ d : new PrimaryFieldAccess(a, c));
 				? ((QualifiedName) qname).dottedName() : "";
 		if (("SafeVarargs".equals(dotted)
 				|| "java.lang.SafeVarargs".equals(dotted))
-				&& Main.dict.javaVersion < JavaVersion.JLS_70) {
+				&& !versionAtLeast(JavaVersion.JLS_70)) {
 			SemError("@SafeVarargs requires -source 7 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}
@@ -5195,7 +5299,7 @@ d : new PrimaryFieldAccess(a, c));
 	}
 
 	private static void consumeModuleDeclaration() {
-		if (Main.dict.javaVersion < JavaVersion.JLS_90) {
+		if (!versionAtLeast(JavaVersion.JLS_90)) {
 			SemError("module declaration requires -source 9 or higher (got "
 				+ JavaVersion.format(Main.dict.javaVersion) + ")");
 		}

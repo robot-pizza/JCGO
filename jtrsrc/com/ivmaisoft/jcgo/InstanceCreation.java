@@ -109,6 +109,24 @@ final class InstanceCreation extends LexNode {
                 forceCheck = true;
             }
             insideAssertStmt = c.insideAssertStmt;
+            // Quirk #5: lambda-arg target inference for `new Foo(..., () -> ...)`.
+            // Mirrors MethodInvocation.preProcessLambdaArgs: resolve the
+            // type early, find a unique constructor by arity, plumb the
+            // matching formal parameter type into each lambda /
+            // method-ref arg's processPass1 via c.currentVarType. Skipped
+            // for qualified `outer.new Inner(...)` (terms[0] non-empty)
+            // because the qualifier-receiver hasn't been resolved yet.
+            // Anonymous-class form (classBody non-empty) also skipped —
+            // the synthesized cd dispatches to a different ctor.
+            if (!terms[0].notEmpty() && !classBody.notEmpty()
+                    && hasLambdaArgInTerm(terms[2])) {
+                terms[1].processPass1(c);
+                ClassDefinition aclassEarly = c.typeClassDefinition;
+                if (aclassEarly != null) {
+                    aclassEarly.define(c.forClass);
+                    preProcessLambdaCtorArgs(c, aclassEarly);
+                }
+            }
             terms[2].processPass1(c);
             Term param;
             ExpressionType exprType0;
@@ -538,5 +556,74 @@ final class InstanceCreation extends LexNode {
             }
         }
         return null;
+    }
+
+    private static int countLambdaParams(Term paramsTerm) {
+        if (paramsTerm == null || !paramsTerm.notEmpty()) return 0;
+        if (paramsTerm instanceof Seq) {
+            return countLambdaParams(((Seq) paramsTerm).terms[0])
+                    + countLambdaParams(((Seq) paramsTerm).terms[1]);
+        }
+        return 1;
+    }
+
+    private static boolean hasLambdaArgInTerm(Term t) {
+        ObjVector args = new ObjVector();
+        MethodInvocation.flattenArgsInto(t, args);
+        for (int i = 0; i < args.size(); i++) {
+            Term head = (Term) args.elementAt(i);
+            if (!(head instanceof Argument)) continue;
+            Term inner = ((Argument) head).terms[0];
+            if (inner instanceof LambdaExpression
+                    || inner instanceof MethodReference) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void preProcessLambdaCtorArgs(Context c, ClassDefinition cls) {
+        ObjVector args = new ObjVector();
+        MethodInvocation.flattenArgsInto(terms[2], args);
+        int argCount = args.size();
+        MethodDefinition uniqueMd =
+                MethodInvocation.findUniqueMdByNameArity(cls, "<init>",
+                        argCount);
+        if (uniqueMd == null) {
+            boolean[] isLam = new boolean[argCount];
+            int[] paramCt = new int[argCount];
+            for (int i = 0; i < argCount; i++) {
+                Term head = (Term) args.elementAt(i);
+                if (!(head instanceof Argument)) continue;
+                Term inner = ((Argument) head).terms[0];
+                if (inner instanceof LambdaExpression) {
+                    isLam[i] = true;
+                    paramCt[i] = countLambdaParams(
+                            ((LambdaExpression) inner).getParams());
+                } else if (inner instanceof MethodReference) {
+                    isLam[i] = true;
+                    paramCt[i] = -1;
+                }
+            }
+            uniqueMd = MethodInvocation.narrowByLambdaShapeRespectingArity(
+                    cls, "<init>", argCount, isLam, paramCt, c.forClass);
+            if (uniqueMd == null) return;
+        }
+        MethodSignature uniqueFormals = uniqueMd.methodSignature();
+        for (int i = 0; i < argCount; i++) {
+            Term head = (Term) args.elementAt(i);
+            if (!(head instanceof Argument)) continue;
+            Term inner = ((Argument) head).terms[0];
+            if (!(inner instanceof LambdaExpression)
+                    && !(inner instanceof MethodReference)) continue;
+            ExpressionType oldVar = c.currentVarType;
+            String oldArgs = c.currentVarTypeArgsJls;
+            c.currentVarType = uniqueFormals.paramAt(i);
+            c.currentVarTypeArgsJls = MethodInvocation.capturedArgsForFormal(
+                    uniqueMd.getParamList(), i);
+            inner.processPass1(c);
+            c.currentVarType = oldVar;
+            c.currentVarTypeArgsJls = oldArgs;
+        }
     }
 }

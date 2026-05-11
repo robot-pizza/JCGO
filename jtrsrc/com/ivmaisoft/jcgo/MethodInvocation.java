@@ -138,6 +138,19 @@ final class MethodInvocation extends LexNode {
             BranchContext oldBranch = c.saveBranch();
             if (terms[1].notEmpty()) {
                 terms[0].processPass1(c);
+                // Quirk #2: javac's implicit-cast-at-generic-call.
+                // If the receiver is a chained generic-method call
+                // whose erased return is Object but whose declared
+                // return was a type-var (`E get(int)` on List<E>),
+                // substitute and wrap the receiver in a synthesized
+                // cast. Without this `attrs.get(0).serialize()`
+                // can't resolve `serialize` (because the receiver's
+                // static type stays Object).
+                Term substituted = trySubstituteChainedGenericReturn(
+                        terms[0], c);
+                if (substituted != null) {
+                    terms[0] = substituted;
+                }
                 resultClass = terms[0].exprType().receiverClass();
                 aclass = null;
                 vecSize = 0;
@@ -1192,9 +1205,32 @@ final class MethodInvocation extends LexNode {
         ObjVector args = new ObjVector();
         flattenArgsInto(terms[2], args);
         int argCount = args.size();
-        MethodSignature uniqueFormals = findUniqueByNameArity(rcv, id,
-                argCount);
-        if (uniqueFormals == null) return;
+        MethodDefinition uniqueMd = findUniqueMdByNameArity(rcv, id, argCount);
+        if (uniqueMd == null) {
+            // P4: try narrowing by lambda-shape (FI param at each
+            // lambda arg's position).
+            boolean[] isLam = new boolean[argCount];
+            int[] paramCt = new int[argCount];
+            for (int i = 0; i < argCount; i++) {
+                Term head = (Term) args.elementAt(i);
+                if (!(head instanceof Argument)) continue;
+                Term inner = ((Argument) head).terms[0];
+                if (inner instanceof LambdaExpression) {
+                    isLam[i] = true;
+                    paramCt[i] = countLambdaParams(
+                            ((LambdaExpression) inner).getParams());
+                } else if (inner instanceof MethodReference) {
+                    isLam[i] = true;
+                    // Method-ref arity isn't statically known here;
+                    // any arity matches.
+                    paramCt[i] = -1;
+                }
+            }
+            uniqueMd = narrowByLambdaShapeRespectingArity(rcv, id,
+                    argCount, isLam, paramCt, c.forClass);
+            if (uniqueMd == null) return;
+        }
+        MethodSignature uniqueFormals = uniqueMd.methodSignature();
         for (int i = 0; i < argCount; i++) {
             Term head = (Term) args.elementAt(i);
             if (!(head instanceof Argument)) continue;
@@ -1202,10 +1238,333 @@ final class MethodInvocation extends LexNode {
             if (!(inner instanceof LambdaExpression)
                     && !(inner instanceof MethodReference)) continue;
             ExpressionType oldVar = c.currentVarType;
+            String oldArgs = c.currentVarTypeArgsJls;
             c.currentVarType = uniqueFormals.paramAt(i);
+            c.currentVarTypeArgsJls =
+                    capturedArgsForFormal(uniqueMd.getParamList(), i);
             inner.processPass1(c);
             c.currentVarType = oldVar;
+            c.currentVarTypeArgsJls = oldArgs;
         }
+    }
+
+    // Quirk #6: walks the FormalParamList AST to find the i-th
+    // parameter's type and reads its parser-captured generic args
+    // (slice 50). Returns null when the parameter has no generic args
+    // or the AST shape isn't recognized.
+    static String capturedArgsForFormal(Term paramList, int index) {
+        if (paramList == null) return null;
+        ObjVector params = new ObjVector();
+        collectFormalParams(paramList, params);
+        if (index < 0 || index >= params.size()) return null;
+        Term fp = (Term) params.elementAt(index);
+        if (!(fp instanceof FormalParameter)) return null;
+        Term type = ((FormalParameter) fp).terms[1];
+        if (!(type instanceof ClassOrIfaceType)) return null;
+        Term name = ((ClassOrIfaceType) type).getNameTerm();
+        return Parser.getCapturedGenericArgs(name);
+    }
+
+    private static void collectFormalParams(Term t, ObjVector out) {
+        if (t == null || !t.notEmpty()) return;
+        if (t instanceof FormalParamList) {
+            FormalParamList list = (FormalParamList) t;
+            collectFormalParams(list.terms[0], out);
+            collectFormalParams(list.terms[1], out);
+        } else if (t instanceof FormalParameter) {
+            out.addElement(t);
+        }
+    }
+
+    // Quirk #2: when `receiver` is a chained MethodInvocation whose
+    // resolved method returns Object and the receiver's variable was
+    // declared with a single-arg parser-captured generic type (e.g.
+    // `attrs` declared as `List<Attribute>`), wrap `receiver` in a
+    // CastExpression to that arg. Returns the wrapped term, or null
+    // when no substitution applies.
+    //
+    // classpath-0.93 predates generics, so List.get / Iterator.next
+    // are declared as `Object get(int)` without a type-var return.
+    // The heuristic is therefore receiver-side: if the receiver's
+    // declaration captured exactly one generic arg, the chained
+    // generic-method return is taken to be that arg. Covers
+    // Collection<E>, List<E>, Set<E>, Iterator<E>, Iterable<E>,
+    // Queue<E>, Deque<E>, Stack<E>. Map<K, V> (two captured args)
+    // deliberately doesn't fire — picking K vs V would be a guess,
+    // and a wrong silent substitution is worse than the explicit-cast
+    // workaround. When the slice-50 returnTypeVarName side channel
+    // *is* set (`<T> T foo()` in user code), the type-var-aware path
+    // takes precedence and Map-style two-arg cases also work
+    // correctly.
+    private static Term trySubstituteChainedGenericReturn(Term receiver,
+            Context c) {
+        if (!(receiver instanceof MethodInvocation)) return null;
+        MethodInvocation inner = (MethodInvocation) receiver;
+        MethodDefinition innerMd = inner.actualMethod;
+        if (innerMd == null) return null;
+        // Inner's return must currently erase to java.lang.Object.
+        ExpressionType retEt = innerMd.exprType();
+        if (retEt == null) return null;
+        ClassDefinition retCls = retEt.signatureClass();
+        if (retCls == null
+                || !Names.JAVA_LANG_OBJECT.equals(retCls.name())
+                || retEt.signatureDimensions() != 0) {
+            return null;
+        }
+        // Receiver of the inner call. Local var, parameter, or
+        // field — `allowInstance=true` lets PrimaryFieldAccess return
+        // a non-static field's VariableDefinition (we only need the
+        // captured-args side channel, not the runtime value).
+        VariableDefinition rcvVar = inner.terms[0].getVariable(true);
+        if (rcvVar == null) return null;
+        String capturedJls = rcvVar.getFieldTypeCapturedArgs();
+        if (capturedJls == null) return null;
+        int argCount = countTopLevelArgs(capturedJls);
+        ClassDefinition substCls = null;
+        String tvar = innerMd.getReturnTypeVarName();
+        if (tvar != null) {
+            // Slice-50-retained return type-var (`<T> T foo()` user
+            // code). Look up T's index in the defining class's
+            // type-param list; substitute the matching captured arg.
+            ClassDefinition definingCls = innerMd.definingClass();
+            if (definingCls == null) return null;
+            String[] typeParamNames = definingCls.getGenericTypeParamNames();
+            if (typeParamNames == null
+                    || typeParamNames.length != argCount) {
+                return null;
+            }
+            int tvarIndex = -1;
+            for (int i = 0; i < typeParamNames.length; i++) {
+                if (tvar.equals(typeParamNames[i])) {
+                    tvarIndex = i; break;
+                }
+            }
+            if (tvarIndex < 0) return null;
+            substCls = pickJlsArgClass(capturedJls, tvarIndex, c);
+        } else if (argCount == 1) {
+            // Pre-generics classpath fallback. Single captured arg
+            // is unambiguous — substitute it.
+            substCls = pickJlsArgClass(capturedJls, 0, c);
+        }
+        if (substCls == null) return null;
+        // Same-class cast (Object → Object) is meaningless.
+        if (Names.JAVA_LANG_OBJECT.equals(substCls.name())) return null;
+        Term castType = new ClassOrIfaceType(qualifiedNameOf(substCls.name()));
+        Term cast = new CastExpression(castType, inner);
+        cast.setLineInfoFrom(inner);
+        cast.processPass1(c);
+        return cast;
+    }
+
+    private static int countTopLevelArgs(String jls) {
+        if (jls == null || jls.length() < 2 || jls.charAt(0) != '<'
+                || jls.charAt(jls.length() - 1) != '>') {
+            return 0;
+        }
+        int i = 1;
+        int end = jls.length() - 1;
+        int count = 0;
+        while (i < end) {
+            char ch = jls.charAt(i);
+            if (ch != 'L') return 0;
+            int depth = 0;
+            int j = i + 1;
+            int semi = -1;
+            while (j < end) {
+                char c2 = jls.charAt(j);
+                if (c2 == '<') depth++;
+                else if (c2 == '>') depth--;
+                else if (c2 == ';' && depth == 0) { semi = j; break; }
+                j++;
+            }
+            if (semi < 0) return 0;
+            count++;
+            i = semi + 1;
+        }
+        return count;
+    }
+
+    // Extract the index-th top-level arg from a JLS-form string like
+    // `<Ljava/lang/String;Ljava/util/List<TT;>;>` and resolve it to a
+    // ClassDefinition. Wildcards (`*`), type-var refs (`T...;`) and
+    // primitive/array args yield null — substitution only fires for
+    // an erased class arg, matching the conservative LambdaSynthesis
+    // counterpart.
+    private static ClassDefinition pickJlsArgClass(String jls, int index,
+            Context c) {
+        if (jls == null || jls.length() < 2 || jls.charAt(0) != '<'
+                || jls.charAt(jls.length() - 1) != '>') {
+            return null;
+        }
+        int i = 1;
+        int end = jls.length() - 1;
+        int pos = 0;
+        while (i < end) {
+            char ch = jls.charAt(i);
+            if (ch != 'L') return null;
+            int depth = 0;
+            int j = i + 1;
+            int semi = -1;
+            while (j < end) {
+                char c2 = jls.charAt(j);
+                if (c2 == '<') depth++;
+                else if (c2 == '>') depth--;
+                else if (c2 == ';' && depth == 0) { semi = j; break; }
+                j++;
+            }
+            if (semi < 0) return null;
+            if (pos == index) {
+                int lt = jls.indexOf('<', i + 1);
+                String dotted;
+                if (lt >= 0 && lt < semi) {
+                    dotted = jls.substring(i + 1, lt).replace('/', '.');
+                } else {
+                    dotted = jls.substring(i + 1, semi).replace('/', '.');
+                }
+                ClassDefinition cd = c == null ? null
+                        : c.resolveClass(dotted, false, false);
+                if (cd == null) {
+                    if (!Main.dict.exists(dotted)) return null;
+                    cd = Main.dict.get(dotted);
+                }
+                return cd;
+            }
+            pos++;
+            i = semi + 1;
+        }
+        return null;
+    }
+
+    private static Term qualifiedNameOf(String dotted) {
+        Term qn = null;
+        int idx = dotted.length();
+        while (idx > 0) {
+            int prev = dotted.lastIndexOf('.', idx - 1);
+            String part = dotted.substring(prev + 1, idx);
+            Term lt = new LexTerm(LexTerm.ID, part);
+            qn = qn == null ? new QualifiedName(lt, Empty.newTerm())
+                    : new QualifiedName(lt, qn);
+            idx = prev;
+        }
+        return qn;
+    }
+
+    static MethodDefinition findUniqueMdByNameArity(
+            ClassDefinition cls, String name, int arity) {
+        java.util.Enumeration en = cls.enumerateMethodSignatures();
+        MethodDefinition unique = null;
+        while (en.hasMoreElements()) {
+            String sig = (String) en.nextElement();
+            MethodDefinition md = cls.getMethodNoInheritance(sig);
+            if (md == null) continue;
+            if (!name.equals(md.id())) continue;
+            if (md.methodSignature().paramCount() != arity) continue;
+            if (unique != null) return null;
+            unique = md;
+        }
+        return unique;
+    }
+
+    // Standards-pass P4: when the simple name+arity lookup is
+    // ambiguous, narrow by "for each lambda / method-ref arg, the
+    // formal at that arg's position is a functional interface".
+    // This picks the right ctor / method for the common case of
+    // overloads where the non-FI variants exist (e.g.
+    // `X(String, String)` vs `X(String, Runnable)`) — the lambda
+    // can only legally target the FI-typed slot.
+    //
+    // Doesn't help genuinely-ambiguous overloads where two same-arity
+    // candidates both have FI-typed slots at the lambda's position
+    // (e.g. `X(String, Runnable)` vs `X(String, Supplier<Integer>)`)
+    // — those require full lambda-body return-type inference, which
+    // remains a deferred deviation noted in TODO.md.
+    private static int countLambdaParams(Term paramsTerm) {
+        if (paramsTerm == null || !paramsTerm.notEmpty()) return 0;
+        if (paramsTerm instanceof Seq) {
+            return countLambdaParams(((Seq) paramsTerm).terms[0])
+                    + countLambdaParams(((Seq) paramsTerm).terms[1]);
+        }
+        return 1;
+    }
+
+    // Variant of narrowByLambdaShape that uses -1 as "any arity"
+    // for method-references, where the static SAM arity isn't
+    // syntactically known without resolution. Falls through to the
+    // standard FI check otherwise.
+    static MethodDefinition narrowByLambdaShapeRespectingArity(
+            ClassDefinition cls, String name, int arity,
+            boolean[] argIsLambda, int[] argLambdaParamCount,
+            ClassDefinition forClass) {
+        java.util.Enumeration en = cls.enumerateMethodSignatures();
+        MethodDefinition match = null;
+        while (en.hasMoreElements()) {
+            String sig = (String) en.nextElement();
+            MethodDefinition md = cls.getMethodNoInheritance(sig);
+            if (md == null) continue;
+            if (!name.equals(md.id())) continue;
+            MethodSignature msig = md.methodSignature();
+            if (msig.paramCount() != arity) continue;
+            boolean ok = true;
+            for (int i = 0; i < arity && ok; i++) {
+                if (!argIsLambda[i]) continue;
+                ExpressionType pt = msig.paramAt(i);
+                ClassDefinition pc = pt.signatureClass();
+                if (pc == null || !pc.isInterface()
+                        || pt.signatureDimensions() != 0) {
+                    ok = false;
+                    break;
+                }
+                MethodDefinition sam = LambdaExpression.findSam(pc,
+                        forClass);
+                if (sam == null) { ok = false; break; }
+                if (argLambdaParamCount[i] >= 0
+                        && sam.methodSignature().paramCount()
+                                != argLambdaParamCount[i]) {
+                    ok = false; break;
+                }
+            }
+            if (!ok) continue;
+            if (match != null) return null;
+            match = md;
+        }
+        return match;
+    }
+
+    static MethodDefinition narrowByLambdaShape(ClassDefinition cls,
+            String name, int arity, boolean[] argIsLambda,
+            int[] argLambdaParamCount, ClassDefinition forClass) {
+        java.util.Enumeration en = cls.enumerateMethodSignatures();
+        MethodDefinition match = null;
+        while (en.hasMoreElements()) {
+            String sig = (String) en.nextElement();
+            MethodDefinition md = cls.getMethodNoInheritance(sig);
+            if (md == null) continue;
+            if (!name.equals(md.id())) continue;
+            MethodSignature msig = md.methodSignature();
+            if (msig.paramCount() != arity) continue;
+            boolean ok = true;
+            for (int i = 0; i < arity && ok; i++) {
+                if (!argIsLambda[i]) continue;
+                ExpressionType pt = msig.paramAt(i);
+                ClassDefinition pc = pt.signatureClass();
+                if (pc == null || !pc.isInterface()
+                        || pt.signatureDimensions() != 0) {
+                    ok = false;
+                    break;
+                }
+                MethodDefinition sam = LambdaExpression.findSam(pc,
+                        forClass);
+                if (sam == null) { ok = false; break; }
+                if (sam.methodSignature().paramCount()
+                        != argLambdaParamCount[i]) {
+                    ok = false; break;
+                }
+            }
+            if (!ok) continue;
+            if (match != null) return null;
+            match = md;
+        }
+        return match;
     }
 
     private boolean hasLambdaArg() {
@@ -1223,7 +1582,7 @@ final class MethodInvocation extends LexNode {
         return false;
     }
 
-    private static MethodSignature findUniqueByNameArity(
+    static MethodSignature findUniqueByNameArity(
             ClassDefinition cls, String name, int arity) {
         java.util.Enumeration en = cls.enumerateMethodSignatures();
         MethodSignature unique = null;
@@ -1333,7 +1692,7 @@ final class MethodInvocation extends LexNode {
 
     private void applyArgAutobox(Context c) {
         if (md == null) return;
-        if (Main.dict.javaVersion < JavaVersion.JLS_50) return;
+        if (!c.versionAtLeast(JavaVersion.JLS_50)) return;
         MethodSignature formalMsig = md.methodSignature();
         int n = formalMsig.paramCount();
         boolean isVarArgs = formalMsig.isVarArgs();
@@ -1449,7 +1808,7 @@ final class MethodInvocation extends LexNode {
         terms[2] = tail;
     }
 
-    private static void flattenArgsInto(Term t, ObjVector out) {
+    static void flattenArgsInto(Term t, ObjVector out) {
         if (!t.notEmpty()) {
             return;
         }

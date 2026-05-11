@@ -530,6 +530,13 @@ final class MethodDefinition {
         return id.equals("<init>");
     }
 
+    // Quirk #6: expose the parser-built FormalParamList AST so callers
+    // can reach captured generic args on parameter types
+    // (Parser.getCapturedGenericArgs keys off the type-name term).
+    Term getParamList() {
+        return paramList;
+    }
+
     boolean isAbstract() {
         return (modifiers & AccModifier.ABSTRACT) != 0;
     }
@@ -739,6 +746,19 @@ final class MethodDefinition {
     // `Ljava/lang/Object;`.
     void setReturnTypeVarName(String name) {
         this.returnTypeVarName = name;
+    }
+
+    // Quirk #2: read by MethodInvocation chained-call retry so it can
+    // substitute T → concrete type when a generic-method's erased
+    // return Object is the receiver of another call.
+    //
+    // Standards-pass P2: falls back to JdkGenericOverlay for JDK
+    // generic methods (e.g. Map.get → V) that classpath-0.93
+    // declares without slice-50-capturable type-var info.
+    String getReturnTypeVarName() {
+        if (returnTypeVarName != null) return returnTypeVarName;
+        return JdkGenericOverlay.getReturnTypeVarFor(definingClass(),
+                methodSignature().signatureString());
     }
 
     void setReturnTypeCapturedArgs(String args) {

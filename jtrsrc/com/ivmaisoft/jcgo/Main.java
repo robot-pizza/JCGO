@@ -349,14 +349,35 @@ public final class Main {
         dict.message("Parsing file: " + fileName);
         Scanner.Init(fileName);
         dict.inBytesCount += (int) (new File(fileName)).length();
-        Parser.Parse();
+        // Standards-pass P1: classpath / goclsp files are JCGO's own
+        // toolchain code, not user code — language-level version gates
+        // shouldn't apply to them. Lets the goclsp overlays use
+        // generics / lambdas regardless of the user's -source level so
+        // P2's modernized JDK interfaces work at any -source.
+        boolean prevTool = Parser.inToolFile;
+        Parser.inToolFile = isToolFilePath(fileName);
+        try {
+            Parser.Parse();
+        } finally {
+            Parser.inToolFile = prevTool;
+        }
         Term t = curUnit;
         if (Scanner.err.count > 0)
             throw new TranslateException("Lexical error in file: " + fileName);
         Context c = new Context();
         c.fileName = fileName;
+        c.fileIsToolchain = isToolFilePath(fileName);
         t.processPass0(c);
         t.processPass1(c);
+    }
+
+    private static boolean isToolFilePath(String fileName) {
+        if (fileName == null) return false;
+        String norm = fileName.replace('\\', '/');
+        return norm.indexOf("/classpath-0.93/") >= 0
+                || norm.indexOf("/goclsp/") >= 0
+                || norm.startsWith("classpath-0.93/")
+                || norm.startsWith("goclsp/");
     }
 
     static ObjQueue readFileOfLines(String fname) {

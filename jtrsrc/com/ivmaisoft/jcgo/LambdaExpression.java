@@ -57,7 +57,7 @@ final class LambdaExpression extends LexNode {
 
     void processPass1(Context c) {
         if (lifted != null) return;
-        if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+        if (!c.versionAtLeast(JavaVersion.JLS_80)) {
             fatalError(c,
                     "lambda expression requires -source 8 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
@@ -93,11 +93,21 @@ final class LambdaExpression extends LexNode {
             LambdaSynthesis.rewriteBareThis(terms[1], c.currentClass);
         }
         Term classBody = LambdaSynthesis.buildClassBody(sam, terms[0],
-                terms[1], bodyIsBlock);
+                terms[1], bodyIsBlock, iface, c.currentVarTypeArgsJls, c);
         Term typeTerm = new ClassOrIfaceType(qualifiedName(iface.name()));
         lifted = new InstanceCreation(typeTerm, Empty.newTerm(), classBody);
         lifted.processPass0(c);
         lifted.processPass1(c);
+        // Quirk #8: after lift, the original params/body Terms are
+        // co-owned by the synthesized class body. Leaving them in
+        // this.terms makes tree walks (discoverObjLeaks, allocRcvr,
+        // isAnyLocalVarChanged, ...) descend into nodes that were
+        // never pass1'd if the SAM is never actually invoked (e.g.
+        // lambda stored in a field and never called). Replacing with
+        // Empty.term routes every subsequent walk exclusively through
+        // `lifted`.
+        terms[0] = Empty.newTerm();
+        terms[1] = Empty.newTerm();
     }
 
     ExpressionType exprType() {
@@ -113,6 +123,22 @@ final class LambdaExpression extends LexNode {
     void processOutput(OutputContext oc) {
         assertCond(lifted != null);
         lifted.processOutput(oc);
+    }
+
+    // Quirk #8: after lifting, the original terms[0] (params) and
+    // terms[1] (body) terms are co-owned by the synthesized class
+    // body — the LambdaExpression placeholder should NOT participate
+    // in tree walks independently of `lifted`, or we'd visit nodes
+    // that the synth class's own walk skipped (e.g. when the SAM is
+    // never invoked anywhere so its body's nodes never got pass1).
+    void discoverObjLeaks() {
+        assertCond(lifted != null);
+        lifted.discoverObjLeaks();
+    }
+
+    void writeStackObjs(OutputContext oc, Term scopeTerm) {
+        assertCond(lifted != null);
+        lifted.writeStackObjs(oc, scopeTerm);
     }
 
     int tokenCount() {

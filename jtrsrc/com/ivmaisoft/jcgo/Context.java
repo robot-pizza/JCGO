@@ -71,11 +71,31 @@ final class Context {
 
     ClassDefinition currentClass;
 
+    // Standards-pass P1: parallel to Parser.inToolFile. Set by
+    // Main.parseJavaFile when the file came from classpath-0.93/ or
+    // goclsp/. Pass1 version gates check `versionAtLeast` so
+    // toolchain code can use generics / lambdas / etc. regardless of
+    // the user's -source level.
+    boolean fileIsToolchain;
+
+    boolean versionAtLeast(int level) {
+        return fileIsToolchain || Main.dict.javaVersion >= level;
+    }
+
     Term passZeroMethodDefnTerm;
 
     MethodDefinition currentMethod;
 
     ExpressionType currentVarType;
+
+    // Quirk #6: JLS-form captured generic args of currentVarType
+    // (e.g. `<Ljava/lang/String;>` for `ChangeListener<String>`).
+    // Populated by MethodInvocation/InstanceCreation alongside
+    // currentVarType when the call site's formal parameter had
+    // captured generic args. LambdaExpression.processPass1 reads
+    // this so the synthesized SAM body sees substituted parameter
+    // types instead of erased Object.
+    String currentVarTypeArgsJls;
 
     ClassDefinition typeClassDefinition;
 

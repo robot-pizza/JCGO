@@ -300,6 +300,208 @@ Updated to `Slice #10` and added a note in the comment that the
 
 Final state: zero `TODO` matches in production code.
 
+### User-reported quirks (2026-05-10 round)
+
+A user trying to run a real app through JCGO 21 reported seven quirks
+(originally six, then a switch-on-enum one came in alongside). State
+as of this round:
+
+- [x] **#1 default -source 1.4.** `JavaVersion.DEFAULT = JLS_210`.
+  Smoke harness still asserts each fixture under its own explicit
+  `-source` so the change is invisible there.
+
+- [x] **#3 generic / wildcard casts.** `(List<String>) x`,
+  `(Map<?, ?>) y`, `(Foo<X>[]) z`. `UnaryWithPara` now peeks for the
+  cast shape `Identifier(.Identifier)* <...> ([])* )` followed by a
+  unary-starter and routes through `SimpleType` (which already
+  handles wildcards via `captureGenericArgsToJls`). Fixture:
+  `examples/java5/GenericCast.java`.
+
+- [x] **#4 for-each iteration variable type as qualified name.**
+  `for (com.foo.Window w : it)`. `looksLikeForeach` extended to walk
+  dotted-id chains and optional `<...>` generic args so any
+  well-formed type works in the foreach header. Fixture:
+  `examples/java5/ForeachQualified.java`.
+
+- [x] **#5 lambda inference into constructor args.**
+  `new Action(label, () -> doX())` errored with "lambda needs an
+  explicit functional-interface target type." InstanceCreation now
+  mirrors `MethodInvocation.preProcessLambdaArgs`: resolves the type
+  early, picks the unique constructor by arity, plumbs the matching
+  formal's ExpressionType into each lambda / method-ref arg's
+  processPass1 via `c.currentVarType`. Fixture:
+  `examples/java8/LambdaCtorArg.java`.
+
+- [x] **#6 lambda → parameterized SAM crash.** The reported
+  AssertException — `field.setOnChange(value -> ...)` for
+  `interface ChangeListener<T> { void onChange(T value); }` and
+  `setOnChange(ChangeListener<String>)`. Two-part fix:
+  (a) `Context.currentVarTypeArgsJls` plumbs the call site's
+  parser-captured generic args alongside currentVarType;
+  `MethodInvocation` + `InstanceCreation` look up the corresponding
+  formal parameter's captured-args side channel and set both fields
+  together. (b) `LambdaSynthesis.buildClassBody` parses the args
+  string, looks up the iface's type-parameter names from
+  `genericSignatureData`, and substitutes T → matching arg in the
+  SAM's formal parameter types. When any substitution fires it runs
+  `BridgeSynthesis.wrap` on the synthesized body so the typed
+  `onChange(String)` gets an `onChange(Object)` bridge — preserving
+  the SAM-dispatch override. Fixture:
+  `examples/java8/LambdaGenericSam.java`.
+
+- [x] **#2 synthetic CHECKCAST after `List<T>.get(i)`.**
+  `attrs.get(i).serialize()` errored as
+  `Undefined: Object.serialize(...)`. `LocalVariableDecl` and
+  `FormalParameter` now thread the declared type's parser-captured
+  generic args onto the variable's `VariableDefinition` (same
+  `fieldTypeCapturedArgs` slot that `FieldDeclaration` was already
+  using). `MethodInvocation.processPass1` then checks the chained
+  receiver: when the receiver is a `MethodInvocation` whose return
+  erases to Object and whose own receiver variable has captured
+  args, wrap the inner call in a synthesized `CastExpression`
+  before resolving the outer call. Two paths: when the inner
+  method's slice-50 `returnTypeVarName` is set (user-source generic
+  methods) the substitution looks up the type-var index in the
+  defining class's `genericSignatureData`; the pre-generics
+  classpath fallback fires when the receiver's captured args have
+  exactly one type-arg (Collection<E>, List<E>, Iterator<E> and
+  friends). Map<K, V> deliberately doesn't fire — picking K vs V
+  would be a guess, and a wrong silent substitution beats the
+  explicit-cast workaround there. Fixture:
+  `examples/java5/GenericChainedGet.java`.
+
+- [x] **#7 switch on enum rejected.** `SwitchStatement.processPass1`
+  now detects an enum-typed discriminant
+  (`superClass.name == java.lang.Enum`) and desugars to a temp
+  local + if/else chain, same shape as the existing string-switch
+  desugar (slice 7b). Each `case CONST` becomes
+  `tmp == EnumType.CONST` with the label re-qualified to
+  `EnumType.LABEL` so it resolves outside the switch's special
+  scope. Multi-label / fall-through cases ride the existing
+  pending-labels mechanism; `break` in case bodies works through
+  the same do-while-0 output wrap. Switch-expression form rides
+  for free because `SwitchExpressionLifter` lowers it to a
+  `SwitchStatement` before this path runs. Fixtures:
+  `examples/java5/EnumSwitch.java` (colon form, fall-through,
+  default) and `examples/java14/EnumSwitchArrow.java` (arrow form,
+  switch-expression form).
+
+### Standards-conformance pass (2026-05-10)
+
+The first round of fixes for the seven reported quirks landed but
+deviated from javac in several spots: receiver-side heuristic
+instead of real generic signature, no exhaustiveness check on
+switch-expression, etc. A second pass tightens these toward javac
+semantics. Smoke harness: positive 99/99, negative 43/43, skipped 3.
+
+- [x] **P1: gate-suppress generics for toolchain files.**
+  `Main.parseJavaFile` sets `Parser.inToolFile` /
+  `Context.fileIsToolchain` when the file lives under
+  `classpath-0.93/` or `goclsp/`. Every `JLS_xx` gate routes
+  through `versionAtLeast` / `c.versionAtLeast`, which short-circuits
+  for toolchain files. Lets the JDK overlays use generics / lambdas
+  / etc. independently of the user-supplied `-source` level so
+  older source levels stay backward-compatible.
+
+- [x] **P2: JdkGenericOverlay.** classpath-0.93 predates JLS-5
+  generics, so its `Map.get` etc. declare `Object` returns rather
+  than `V`. Rather than modernize the classpath sources (which
+  would have been a 2000+-line edit across the collection
+  interfaces), `JdkGenericOverlay` registers the type-parameter
+  list and per-method return-type-var for the JDK collection /
+  iterator / map hierarchy. ClassDefinition.getGenericTypeParamNames
+  and MethodDefinition.getReturnTypeVarName fall back to the overlay
+  when slice-50 retention didn't capture the info.
+
+- [x] **P3: real generic resolution for chained generic-method
+  calls (#2 follow-up).** `MethodInvocation.trySubstituteChainedGenericReturn`
+  now drives off the inner method's `getReturnTypeVarName` and the
+  defining class's `getGenericTypeParamNames`, looking up the
+  type-var's index and pulling that index from the receiver's
+  captured args. `Map<K, V>.get → V` resolves correctly. The
+  single-captured-arg receiver-side heuristic stays as a fallback
+  for user-defined generic classes that pre-date their own slice-50
+  retention.
+
+- [x] **#8: AssertException on lambda-via-setter into non-generic
+  SAM field.** Pre-existing JCGO bug surfaced by the user's third
+  report — even on clean master, a lambda stored in a field and
+  never invoked crashed at the Output pass because the
+  LambdaExpression placeholder's tree walks (discoverObjLeaks,
+  allocRcvr, isAnyLocalVarChanged) descended into nodes inside the
+  synth class body that were never pass1'd (the SAM's method body
+  never got marked-used). Fix: after lift, `LambdaExpression`
+  replaces its own `terms[0]` / `terms[1]` with `Empty.term` and
+  overrides `discoverObjLeaks` / `writeStackObjs` to delegate to
+  `lifted`. All subsequent walks route exclusively through the
+  lifted InstanceCreation. Fixture:
+  `examples/java8/LambdaUncalledSetter.java`.
+
+- [x] **P4: same-arity ctor / method overload narrowing
+  (partial).** `narrowByLambdaShapeRespectingArity` narrows
+  same-arity candidates to those whose param at each lambda /
+  method-ref arg's position is a functional interface with matching
+  SAM arity. Handles the common case of mixed overloads where the
+  non-FI variants are present (e.g.
+  `X(String, String)` vs `X(String, Runnable)` — pick Runnable).
+  Genuinely-ambiguous all-FI overloads
+  (`X(String, Runnable)` vs `X(String, Supplier<Integer>)`) still
+  need full lambda-body return-type inference and surface the
+  existing "lambda needs an explicit functional-interface target
+  type" error.
+
+- [x] **P5: SAM return-type substitution.** Wired
+  `LambdaSynthesis.resolveTypeVarReturn` — looks up the SAM's
+  `getReturnTypeVarName` (slice-50 retention or overlay fallback),
+  finds the type-var's index in the iface's
+  `getGenericTypeParamNames`, and pulls the substituted ExpressionType
+  from the call site's captured args. The synthesized method's
+  return type now matches the substituted SAM return rather than
+  the erased Object. Fixture: `examples/java8/LambdaSupplier.java`.
+
+- [x] **P6: switch-expression exhaustiveness on enum.**
+  `SwitchStatement.markFromSwitchExpression` set by
+  SwitchExpressionLifter when it lifts an expression-shaped switch.
+  `checkEnumSwitchExpressionExhaustive` runs at pass1: walks the
+  case labels, collects covered enum constants, compares against
+  the enum class's static-final-self-typed fields, rejects with a
+  javac-style "switch expression does not cover all possible input
+  values" message when a constant is unmatched and no default arm
+  is present. Fixtures:
+  `examples/java14/EnumSwitchExhaustive.java` (positive),
+  `examples/java14/EnumSwitchNonExhaustive.java` (inv_14 negative
+  asserts the error).
+
+- [ ] **P7: unchecked-cast diagnostic.** Lint-only. javac emits
+  "unchecked cast" warnings for `(List<String>) x` style casts
+  where the runtime check can't verify the parameterized args.
+  JCGO doesn't track / emit lint warnings broadly; deferred.
+
+### Known deviations from javac (audited)
+
+Standards-pass left a small set of deliberate gaps where javac's
+behavior would require infrastructure JCGO doesn't yet have:
+
+- **Lambda overload resolution by body return-type.** Two same-arity
+  FI candidates (`X(String, Runnable)` vs `X(String, Supplier<Integer>)`)
+  can't be disambiguated by P4's FI-arity narrowing alone. javac
+  would use the lambda body's expression / yield type to pick. JCGO
+  emits "lambda needs an explicit functional-interface target type"
+  and the user manually annotates one side.
+- **Nested chained generic calls.** `outer.get(0).get(0).method()`
+  for `List<List<X>>` still requires an intermediate explicit cast
+  because P3's synthesized CastExpression doesn't propagate captured
+  args forward.
+- **Subclass-fixed type-args at variable type.** `class SL extends
+  ArrayList<String> {}` then `SL sl; sl.get(0).x()` doesn't pick up
+  String — the use-site variable `sl` has no captured args (it's
+  unparameterized in the user's declaration). javac walks the class
+  hierarchy. Overlay-only fix would mean an entry per user subclass
+  — not viable.
+- **case null** in enum switch (JLS 21) — my desugar would emit
+  `tmp == EnumType.null` and miscompile.
+- **Unchecked-cast warnings** (P7).
+
 ### Won't do
 
 - **JDWP debugger natives.** Substantial native-runtime project

@@ -87,12 +87,12 @@ final class ForeachStatement extends LexNode {
     }
 
     void processPass1(Context c) {
-        if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+        if (!c.versionAtLeast(JavaVersion.JLS_50)) {
             fatalError(c, "enhanced for loop requires -source 5 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
         }
         if (isVarForeach
-                && Main.dict.javaVersion < JavaVersion.JLS_100) {
+                && !c.versionAtLeast(JavaVersion.JLS_100)) {
             fatalError(c,
                     "var in foreach requires -source 10 or higher (got "
                             + JavaVersion.format(Main.dict.javaVersion)

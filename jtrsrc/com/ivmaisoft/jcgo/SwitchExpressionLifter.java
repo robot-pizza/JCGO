@@ -80,7 +80,10 @@ final class SwitchExpressionLifter {
             buildCaseStatements(arrow, varName, emittedCases);
         }
         Term caseSeq = seqOf(emittedCases);
-        Term switchStmt = new SwitchStatement(se.getDiscriminant(), caseSeq);
+        SwitchStatement switchStmt = new SwitchStatement(se.getDiscriminant(),
+                caseSeq);
+        // P6: mark so the enum-switch path can enforce exhaustiveness.
+        switchStmt.markFromSwitchExpression();
 
         // Return a Seq (not a Block) so the synthesized declaration
         // shares the enclosing block's scope — the user expects the
@@ -273,7 +276,10 @@ final class SwitchExpressionLifter {
             buildCaseStatements(arrow, varName, emittedCases);
         }
         Term caseSeq = seqOf(emittedCases);
-        return new SwitchStatement(se.getDiscriminant(), caseSeq);
+        SwitchStatement ss = new SwitchStatement(se.getDiscriminant(),
+                caseSeq);
+        ss.markFromSwitchExpression();
+        return ss;
     }
 
     static boolean anyPatternCases(SwitchExpression se) {
@@ -298,7 +304,10 @@ final class SwitchExpressionLifter {
             buildThrowingCase(arrow, emittedCases);
         }
         Term caseSeq = seqOf(emittedCases);
-        return new SwitchStatement(se.getDiscriminant(), caseSeq);
+        SwitchStatement ss = new SwitchStatement(se.getDiscriminant(),
+                caseSeq);
+        ss.markFromSwitchExpression();
+        return ss;
     }
 
     /**

@@ -71,7 +71,7 @@ final class ImportDeclaration extends LexNode {
 
     void processPass0(Context c) {
         if (isStatic) {
-            if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+            if (!c.versionAtLeast(JavaVersion.JLS_50)) {
                 fatalError(c,
                         "static import requires -source 5 or higher (got "
                         + JavaVersion.format(Main.dict.javaVersion) + ")");

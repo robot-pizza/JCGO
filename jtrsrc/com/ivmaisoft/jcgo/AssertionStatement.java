@@ -65,7 +65,7 @@ final class AssertionStatement extends LexNode {
     }
 
     void processPass1(Context c) {
-        if (Main.dict.javaVersion < JavaVersion.JLS_14) {
+        if (!c.versionAtLeast(JavaVersion.JLS_14)) {
             fatalError(c, "'assert' requires -source 1.4 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
         }

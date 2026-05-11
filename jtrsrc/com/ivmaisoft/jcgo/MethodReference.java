@@ -55,7 +55,7 @@ final class MethodReference extends LexNode {
 
     void processPass1(Context c) {
         if (lifted != null) return;
-        if (Main.dict.javaVersion < JavaVersion.JLS_80) {
+        if (!c.versionAtLeast(JavaVersion.JLS_80)) {
             fatalError(c,
                     "method reference requires -source 8 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
@@ -113,7 +113,7 @@ final class MethodReference extends LexNode {
         }
         Term body = buildBody(paramNames, sam, unbound, captureName);
         Term classBody = LambdaSynthesis.buildClassBody(sam, lambdaParams,
-                body, false);
+                body, false, iface, c.currentVarTypeArgsJls, c);
         if (captureField != null) {
             classBody = new Seq(captureField, classBody);
         }

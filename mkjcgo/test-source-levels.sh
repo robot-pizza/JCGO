@@ -58,13 +58,13 @@ prev_for_21=17
 # the matching -source level. Files outside this list run only the
 # positive test (since they may be pre-modern code that translates at
 # any level).
-neg_5="Foreach Varargs StaticImport Annotations AnnotationType Autobox Enums Generics"
+neg_5="Foreach Varargs StaticImport Annotations AnnotationType Autobox Enums Generics ForeachQualified EnumSwitch GenericChainedGet"
 neg_7="MultiCatch StringSwitch TryWithResources NumericUnderscores SafeVarargs"
-neg_8="DefaultIface Lambda MethodRef TypeUseAnno"
+neg_8="DefaultIface Lambda MethodRef TypeUseAnno LambdaCtorArg LambdaGenericSam LambdaUncalledSetter LambdaSupplier"
 neg_9="PrivateIface TwrExisting"
 neg_10="VarLocal VarFor VarForeach"
 neg_11="VarLambda"
-neg_14="SwitchArrow SwitchExpr"
+neg_14="SwitchArrow SwitchExpr EnumSwitchArrow EnumSwitchExhaustive"
 neg_16="PatternInstanceof Records"
 neg_17="Sealed NonSealed"
 neg_21="SwitchPattern RecordPatterns"
@@ -166,6 +166,8 @@ run_invalid() {
 # the JCGO error output.
 inv_17="SealedBad"
 inv_17_SealedBad_needle="not permitted to extend sealed"
+inv_14="EnumSwitchNonExhaustive"
+inv_14_EnumSwitchNonExhaustive_needle="switch expression does not cover"
 
 for v in $versions; do
     dir="examples/java$v"

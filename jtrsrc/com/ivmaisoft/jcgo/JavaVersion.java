@@ -86,7 +86,12 @@ final class JavaVersion {
 
     static final int JLS_210 = 210;
 
-    static final int DEFAULT = JLS_14;
+    /*
+     * Fork default is JLS 21 — matches the modernization framing
+     * (upstream's default was 1.4). Smoke harness still asserts each
+     * fixture under its own explicit -source level.
+     */
+    static final int DEFAULT = JLS_210;
 
     private JavaVersion() {
     }

@@ -88,7 +88,34 @@ final class LocalVariableDecl extends LexNode {
             fatalError(c, "Type is expected");
         }
         terms[3].processPass1(c);
+        // Quirk #2: thread the declared type's parser-captured generic
+        // args onto each local-var's VariableDefinition. The same
+        // fieldTypeCapturedArgs slot is reused (the name is a slice-50
+        // misnomer — storage is generic). Read at MethodInvocation
+        // chained-call retry to substitute T → concrete type.
+        if (terms[1] instanceof ClassOrIfaceType) {
+            Term name = ((ClassOrIfaceType) terms[1]).getNameTerm();
+            String captured = Parser.getCapturedGenericArgs(name);
+            if (captured != null) {
+                attachCapturedArgs(terms[3], captured);
+            }
+        }
         c.modifiers = oldModifiers;
+    }
+
+    private static void attachCapturedArgs(Term t, String args) {
+        if (!t.notEmpty()) return;
+        if (t instanceof VariableDeclareList) {
+            VariableDeclareList list = (VariableDeclareList) t;
+            attachCapturedArgs(list.terms[0], args);
+            attachCapturedArgs(list.terms[1], args);
+            return;
+        }
+        if (t instanceof VariableDeclarator) {
+            VariableDeclarator vd = (VariableDeclarator) t;
+            VariableDefinition v = vd.terms[0].getVariable(false);
+            if (v != null) v.setFieldTypeCapturedArgs(args);
+        }
     }
 
     private static boolean isVarType(Term t) {
@@ -107,7 +134,7 @@ final class LocalVariableDecl extends LexNode {
     }
 
     private void processVarPass1(Context c) {
-        if (Main.dict.javaVersion < JavaVersion.JLS_100) {
+        if (!c.versionAtLeast(JavaVersion.JLS_100)) {
             fatalError(c,
                     "var local-variable type inference requires -source 10 or higher (got "
                             + JavaVersion.format(Main.dict.javaVersion) + ")");

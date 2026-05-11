@@ -91,14 +91,14 @@ final class MethodDeclaration extends LexNode {
         if (isInterfaceConcrete) {
             if ((c.modifiers & (AccModifier.STATIC | AccModifier.DEFAULT))
                     != 0
-                    && Main.dict.javaVersion < JavaVersion.JLS_80) {
+                    && !c.versionAtLeast(JavaVersion.JLS_80)) {
                 fatalError(c,
                         "default/static interface method requires -source 8 or higher (got "
                                 + JavaVersion.format(Main.dict.javaVersion)
                                 + ")");
             }
             if ((c.modifiers & AccModifier.PRIVATE) != 0
-                    && Main.dict.javaVersion < JavaVersion.JLS_90) {
+                    && !c.versionAtLeast(JavaVersion.JLS_90)) {
                 fatalError(c,
                         "private interface method requires -source 9 or higher (got "
                                 + JavaVersion.format(Main.dict.javaVersion)

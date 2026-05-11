@@ -423,6 +423,13 @@ final class VariableDefinition {
         this.fieldTypeCapturedArgs = args;
     }
 
+    // Quirk #2: the same slot is reused for local-var and parameter
+    // captured args so MethodInvocation can substitute T → concrete
+    // type when a generic method's erased return is chained.
+    String getFieldTypeCapturedArgs() {
+        return fieldTypeCapturedArgs;
+    }
+
     void setMultiBoundSecondaries(String s) {
         this.multiBoundSecondaries = s;
     }

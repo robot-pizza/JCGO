@@ -51,7 +51,7 @@ final class Autobox {
         }
         boolean wouldUnbox = wrapperPrim >= 0;
         if (!wouldBox && !wouldUnbox) return expr;
-        if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+        if (!c.versionAtLeast(JavaVersion.JLS_50)) {
             expr.fatalError(c,
                     "autoboxing requires -source 5 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");
@@ -71,7 +71,7 @@ final class Autobox {
         if (srcSize < Type.CLASSINTERFACE) return null;
         int wrapperPrim = wrapperPrimitive(expr);
         if (wrapperPrim < 0) return null;
-        if (Main.dict.javaVersion < JavaVersion.JLS_50) {
+        if (!c.versionAtLeast(JavaVersion.JLS_50)) {
             expr.fatalError(c,
                     "autoboxing requires -source 5 or higher (got "
                     + JavaVersion.format(Main.dict.javaVersion) + ")");

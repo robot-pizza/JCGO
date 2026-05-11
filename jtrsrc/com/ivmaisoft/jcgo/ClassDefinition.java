@@ -718,6 +718,28 @@ final class ClassDefinition extends ExpressionType {
         this.genericSignatureData = data;
     }
 
+    // Quirk #6: type-parameter names declared on this class, in
+    // declaration order. Returns null when the class has no
+    // type-parameters. Used by LambdaSynthesis to substitute T → arg
+    // when the call site supplied captured generic args.
+    //
+    // Standards-pass P2: falls back to JdkGenericOverlay for the
+    // JDK collection / map / iterator hierarchy that classpath-0.93
+    // declares pre-generics. So `Map<K,V>.get → V` substitution
+    // works without modernizing the classpath sources.
+    String[] getGenericTypeParamNames() {
+        if (genericSignatureData != null
+                && genericSignatureData.size() > 0) {
+            int n = genericSignatureData.size() / 2;
+            String[] names = new String[n];
+            for (int i = 0; i < n; i++) {
+                names[i] = (String) genericSignatureData.elementAt(i * 2);
+            }
+            return names;
+        }
+        return JdkGenericOverlay.getTypeParamsFor(name);
+    }
+
     // Slice 49: store the parser-captured class-level annotation type
     // names. Called from ClassDeclaration.processPass0.
     void setAnnotationTypeNames(ObjVector names) {
@@ -2845,6 +2867,12 @@ final class ClassDefinition extends ExpressionType {
      */
     Enumeration enumerateMethodSignatures() {
         return methodDictionary().keys();
+    }
+
+    // P6: package-private accessor used by SwitchStatement when
+    // enforcing enum-switch-expression exhaustiveness.
+    Enumeration enumerateFieldNames() {
+        return fieldDictionary().keys();
     }
 
     private OrderedMap fieldDictionary() {
