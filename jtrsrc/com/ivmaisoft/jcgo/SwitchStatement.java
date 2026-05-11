@@ -114,6 +114,14 @@ final class SwitchStatement extends BreakableStmt {
                                 + JavaVersion.format(Main.dict.javaVersion)
                                 + ")");
             }
+            // D4: `case null` is JLS 21.
+            if (hasNullLabel(terms[2])
+                    && !c.versionAtLeast(JavaVersion.JLS_210)) {
+                fatalError(c,
+                        "case null requires -source 21 or higher (got "
+                                + JavaVersion.format(Main.dict.javaVersion)
+                                + ")");
+            }
             if (isFromSwitchExpression) {
                 checkEnumSwitchExpressionExhaustive(c, discrClass, terms[2]);
             }
@@ -275,6 +283,9 @@ final class SwitchStatement extends BreakableStmt {
         ObjVector cases = new ObjVector();
         flattenCases(caseChain, cases);
         boolean hasDefault = false;
+        // D4: `case null` is orthogonal to enum-constant coverage —
+        // it handles the null discriminator value, not any specific
+        // constant. Skip it when counting covered constants.
         ObjHashSet covered = new ObjHashSet();
         for (int i = 0; i < cases.size(); i++) {
             CaseStatement cs = (CaseStatement) cases.elementAt(i);
@@ -283,6 +294,7 @@ final class SwitchStatement extends BreakableStmt {
                 hasDefault = true;
                 continue;
             }
+            if (isNullLabel(label)) continue;
             String name = label.dottedName();
             if (name == null) continue;
             int dot = name.lastIndexOf('.');
@@ -397,8 +409,19 @@ final class SwitchStatement extends BreakableStmt {
     // `tmp == EnumType.LABEL` — extract the simple-name label from
     // whatever wrapper Expression / QualifiedName the parser built
     // and re-qualify it under the discriminator's enum class.
+    //
+    // D4: `case null` (JLS 21) becomes `tmp == null` rather than
+    // `tmp == EnumType.null` (which would be a parse-level "undefined
+    // qualified variable" error).
     private static Term buildEnumEq(String tmpName,
             ClassDefinition enumCls, Term labelExpr) {
+        Term lhs = new Expression(new QualifiedName(new LexTerm(
+                LexTerm.ID, tmpName), Empty.newTerm()));
+        if (isNullLabel(labelExpr)) {
+            Term nullLit = new LexTerm(LexTerm.xNULL, "null");
+            return new RelationalOp(lhs, new LexTerm(LexTerm.EQ, "=="),
+                    nullLit);
+        }
         String simple = labelExpr.dottedName();
         // For an already-qualified label (`case EnumType.LABEL`) keep
         // only the last segment — re-qualification happens below.
@@ -408,10 +431,37 @@ final class SwitchStatement extends BreakableStmt {
         }
         if (simple == null) simple = "?";
         Term qualified = enumConstantRef(enumCls, simple);
-        Term lhs = new Expression(new QualifiedName(new LexTerm(
-                LexTerm.ID, tmpName), Empty.newTerm()));
         return new RelationalOp(lhs, new LexTerm(LexTerm.EQ, "=="),
                 qualified);
+    }
+
+    // True if any case label in the chain is the null literal.
+    // Used to JLS-21-gate the `case null` form.
+    private static boolean hasNullLabel(Term caseChain) {
+        ObjVector cases = new ObjVector();
+        flattenCases(caseChain, cases);
+        for (int i = 0; i < cases.size(); i++) {
+            CaseStatement cs = (CaseStatement) cases.elementAt(i);
+            if (cs.terms[0].notEmpty() && isNullLabel(cs.terms[0])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // True when the case label is the null literal. The parser puts
+    // `case null` through UnaryExpression / JavaExpression, producing
+    // an Expression(LexTerm(xNULL, "null")) — strip the wrapper and
+    // check the underlying LexTerm kind.
+    private static boolean isNullLabel(Term labelExpr) {
+        Term inner = labelExpr;
+        while (inner instanceof Expression) {
+            inner = ((Expression) inner).terms[0];
+        }
+        if (inner instanceof LexTerm) {
+            return ((LexTerm) inner).getSym() == LexTerm.xNULL;
+        }
+        return false;
     }
 
     // Build `EnumType.LABEL` as a single dotted QualifiedName chain

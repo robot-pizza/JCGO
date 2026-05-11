@@ -88,6 +88,15 @@ class ClassDeclaration extends LexNode {
         if (genericSig != null) {
             classDefn.setGenericSignatureData(genericSig);
         }
+        // D3: capture the extends-clause's parser-captured generic
+        // args (e.g. `<String>` from `extends ArrayList<String>`) so
+        // MethodInvocation's chained-call substitution can resolve
+        // type-vars on subclass-fixed-type-args uses (`SL sl;
+        // sl.get(0).method()` — sl itself has no captured args).
+        String extendsArgs = extractCapturedArgs(terms[1]);
+        if (extendsArgs != null) {
+            classDefn.setSuperClassCapturedArgs(extendsArgs);
+        }
         // Slice 49: thread the parser-captured class-level annotation
         // type names onto the ClassDefinition for codegen emission.
         ObjVector annos = Parser.getDeclarationAnnotations(this);
@@ -117,5 +126,18 @@ class ClassDeclaration extends LexNode {
     final void processPass1(Context c) {
         assertCond(classDefn != null);
         classDefn.processPass1(c);
+    }
+
+    // D3: walk an extends-type Term to find the name term whose
+    // slice-50 captured args we want. Handles the common shapes:
+    //   ClassOrIfaceType(QualifiedName)
+    //   QualifiedName (bare)
+    private static String extractCapturedArgs(Term t) {
+        if (t == null || !t.notEmpty()) return null;
+        if (t instanceof ClassOrIfaceType) {
+            Term name = ((ClassOrIfaceType) t).getNameTerm();
+            return Parser.getCapturedGenericArgs(name);
+        }
+        return Parser.getCapturedGenericArgs(t);
     }
 }

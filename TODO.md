@@ -477,30 +477,63 @@ semantics. Smoke harness: positive 99/99, negative 43/43, skipped 3.
   where the runtime check can't verify the parameterized args.
   JCGO doesn't track / emit lint warnings broadly; deferred.
 
-### Known deviations from javac (audited)
+### Deviations from javac — round-2 closes (audited)
 
-Standards-pass left a small set of deliberate gaps where javac's
-behavior would require infrastructure JCGO doesn't yet have:
+After the first standards-pass shipped, a second round closed each
+of the documented deviations:
 
-- **Lambda overload resolution by body return-type.** Two same-arity
-  FI candidates (`X(String, Runnable)` vs `X(String, Supplier<Integer>)`)
-  can't be disambiguated by P4's FI-arity narrowing alone. javac
-  would use the lambda body's expression / yield type to pick. JCGO
-  emits "lambda needs an explicit functional-interface target type"
-  and the user manually annotates one side.
-- **Nested chained generic calls.** `outer.get(0).get(0).method()`
-  for `List<List<X>>` still requires an intermediate explicit cast
-  because P3's synthesized CastExpression doesn't propagate captured
-  args forward.
-- **Subclass-fixed type-args at variable type.** `class SL extends
-  ArrayList<String> {}` then `SL sl; sl.get(0).x()` doesn't pick up
-  String — the use-site variable `sl` has no captured args (it's
-  unparameterized in the user's declaration). javac walks the class
-  hierarchy. Overlay-only fix would mean an entry per user subclass
-  — not viable.
-- **case null** in enum switch (JLS 21) — my desugar would emit
-  `tmp == EnumType.null` and miscompile.
-- **Unchecked-cast warnings** (P7).
+- [x] **D4: `case null` in enum switch** (JLS 21). `buildEnumEq`
+  detects null labels and emits `tmp == null` rather than
+  `tmp == EnumType.null`. Exhaustiveness check skips null labels
+  (they're orthogonal to constant coverage). Parity verified
+  against `java NullCase` — both emit `0 / 1 / 2`.
+
+- [x] **D3: subclass-fixed type-args via superclass walk.** Parser's
+  `ExtendsType` now uses `captureGenericArgsToJls` so the extends
+  clause's generic args are retained alongside the type-param list.
+  `ClassDeclaration.processPass0` threads them onto the
+  ClassDefinition via `setSuperClassCapturedArgs`. MethodInvocation's
+  chained-call substitution walks the receiver class's superclass
+  chain via `findInheritedCapturedArgs` when the use-site variable
+  itself has no captured args. `class SL extends ArrayList<String>`
+  then `sl.get(0).length()` resolves to String.
+
+- [x] **D2: propagate captured args through synthesized cast.**
+  When the chained-call substitution wraps the inner call in a
+  `CastExpression`, extract the inner generic-args slot from the
+  outer captured-args JLS form (e.g. for outer
+  `<Ljava/util/List<Lpkg/X;>;>` index 0 → `<Lpkg/X;>`) and stash
+  on the cast via `MethodInvocation.synthCastArgs`. The next
+  chained call's substitution reads the cast's stashed args before
+  giving up. `outer.get(0).get(0).length()` for
+  `List<List<String>>`, triple-nested chains, and
+  `Map<K, List<V>>.get(k).get(0)` all resolve.
+
+- [~] **D1: lambda overload by body return-type shape** — partial.
+  `classifyLambdaShape` distinguishes block-with-return (VALUE),
+  block-no-return (VOID), and expression bodies whose terminal
+  shape is a literal / arithmetic / new-instance (VALUE).
+  `narrowByLambdaShapeRespectingArity` filters same-arity FI
+  candidates by SAM-return-type vs the classified shape. Pins
+  `new X("k", () -> 9 + 1)` to `Sup<Integer>`,
+  `new X("k", () -> { return 7; })` to `Sup<Integer>`,
+  `new X("k", () -> { sink[0]++; })` to `Runnable`.
+  Residual: expression-body lambdas whose terminal is a
+  MethodInvocation / Assignment / Postfix++/-- can't be
+  disambiguated syntactically (they could be void OR value
+  depending on the called method's return) — these still surface
+  the existing "lambda needs explicit target type" error. javac
+  resolves these via speculative pass1 against each candidate;
+  JCGO's pass1 isn't easily reversible, so this case stays
+  user-disambiguated.
+
+- [ ] **P7: unchecked-cast lint warnings.** javac emits a per-file
+  "uses unchecked or unsafe operations" notice when an explicit
+  cast targets a parameterized type with non-wildcard args (e.g.
+  `(List<String>) x`). JCGO has no warnings facility — adding one
+  is more infrastructure than the signal value of P7 warrants.
+  Cast erasure semantics already match javac; only the lint
+  diagnostic is missing.
 
 ### D6: for-each over Iterable (closed)
 

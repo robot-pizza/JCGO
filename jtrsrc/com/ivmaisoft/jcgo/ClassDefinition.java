@@ -718,6 +718,21 @@ final class ClassDefinition extends ExpressionType {
         this.genericSignatureData = data;
     }
 
+    // D3: captured args of the extends-clause type
+    // (e.g. `<Ljava/lang/String;>` for `extends ArrayList<String>`).
+    // Used by MethodInvocation's chained-call substitution when the
+    // use-site variable's class is itself non-parameterized but
+    // extends a parameterized class.
+    private String superClassCapturedArgs;
+
+    void setSuperClassCapturedArgs(String args) {
+        this.superClassCapturedArgs = args;
+    }
+
+    String getSuperClassCapturedArgs() {
+        return superClassCapturedArgs;
+    }
+
     // Quirk #6: type-parameter names declared on this class, in
     // declaration order. Returns null when the class has no
     // type-parameters. Used by LambdaSynthesis to substitute T → arg

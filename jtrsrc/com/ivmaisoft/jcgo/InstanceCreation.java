@@ -592,21 +592,25 @@ final class InstanceCreation extends LexNode {
         if (uniqueMd == null) {
             boolean[] isLam = new boolean[argCount];
             int[] paramCt = new int[argCount];
+            int[] shape = new int[argCount];
             for (int i = 0; i < argCount; i++) {
                 Term head = (Term) args.elementAt(i);
                 if (!(head instanceof Argument)) continue;
                 Term inner = ((Argument) head).terms[0];
                 if (inner instanceof LambdaExpression) {
                     isLam[i] = true;
-                    paramCt[i] = countLambdaParams(
-                            ((LambdaExpression) inner).getParams());
+                    LambdaExpression lam = (LambdaExpression) inner;
+                    paramCt[i] = countLambdaParams(lam.getParams());
+                    shape[i] = MethodInvocation.classifyLambdaShape(lam);
                 } else if (inner instanceof MethodReference) {
                     isLam[i] = true;
                     paramCt[i] = -1;
+                    shape[i] = MethodInvocation.SHAPE_ANY;
                 }
             }
             uniqueMd = MethodInvocation.narrowByLambdaShapeRespectingArity(
-                    cls, "<init>", argCount, isLam, paramCt, c.forClass);
+                    cls, "<init>", argCount, isLam, paramCt, shape,
+                    c.forClass);
             if (uniqueMd == null) return;
         }
         MethodSignature uniqueFormals = uniqueMd.methodSignature();

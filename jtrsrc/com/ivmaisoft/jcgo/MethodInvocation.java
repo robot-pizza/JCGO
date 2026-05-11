@@ -1207,27 +1207,29 @@ final class MethodInvocation extends LexNode {
         int argCount = args.size();
         MethodDefinition uniqueMd = findUniqueMdByNameArity(rcv, id, argCount);
         if (uniqueMd == null) {
-            // P4: try narrowing by lambda-shape (FI param at each
-            // lambda arg's position).
+            // P4 + D1: narrow same-arity candidates by FI shape at
+            // the lambda arg's position, then by SAM-return-type vs
+            // lambda-body-shape (block-with-return → value, etc).
             boolean[] isLam = new boolean[argCount];
             int[] paramCt = new int[argCount];
+            int[] shape = new int[argCount];
             for (int i = 0; i < argCount; i++) {
                 Term head = (Term) args.elementAt(i);
                 if (!(head instanceof Argument)) continue;
                 Term inner = ((Argument) head).terms[0];
                 if (inner instanceof LambdaExpression) {
                     isLam[i] = true;
-                    paramCt[i] = countLambdaParams(
-                            ((LambdaExpression) inner).getParams());
+                    LambdaExpression lam = (LambdaExpression) inner;
+                    paramCt[i] = countLambdaParams(lam.getParams());
+                    shape[i] = classifyLambdaShape(lam);
                 } else if (inner instanceof MethodReference) {
                     isLam[i] = true;
-                    // Method-ref arity isn't statically known here;
-                    // any arity matches.
                     paramCt[i] = -1;
+                    shape[i] = SHAPE_ANY;
                 }
             }
             uniqueMd = narrowByLambdaShapeRespectingArity(rcv, id,
-                    argCount, isLam, paramCt, c.forClass);
+                    argCount, isLam, paramCt, shape, c.forClass);
             if (uniqueMd == null) return;
         }
         MethodSignature uniqueFormals = uniqueMd.methodSignature();
@@ -1311,13 +1313,31 @@ final class MethodInvocation extends LexNode {
                 || retEt.signatureDimensions() != 0) {
             return null;
         }
-        // Receiver of the inner call. Local var, parameter, or
-        // field — `allowInstance=true` lets PrimaryFieldAccess return
-        // a non-static field's VariableDefinition (we only need the
-        // captured-args side channel, not the runtime value).
+        // Receiver of the inner call. Local var, parameter, field,
+        // OR a synthesized CastExpression from a previous chained
+        // substitution (D2 — nested generic calls).
+        String capturedJls = null;
         VariableDefinition rcvVar = inner.terms[0].getVariable(true);
-        if (rcvVar == null) return null;
-        String capturedJls = rcvVar.getFieldTypeCapturedArgs();
+        if (rcvVar != null) {
+            capturedJls = rcvVar.getFieldTypeCapturedArgs();
+            // D3: when the variable's own declared type has no
+            // captured args (e.g. `SL sl;` where
+            // `SL extends ArrayList<String>`), walk the variable's
+            // class chain to find a superclass that captured args at
+            // its extends-clause. Use those as the effective captured
+            // args for substitution.
+            if (capturedJls == null && rcvVar.exprType() != null) {
+                capturedJls = findInheritedCapturedArgs(
+                        rcvVar.exprType().signatureClass());
+            }
+        }
+        // D2: walk through a synthesized cast that THIS code wrote
+        // for an outer chained call. Lets `outer.get(0).get(0).x()`
+        // for `List<List<X>>` carry args from the outer captured
+        // slot down to the inner call.
+        if (capturedJls == null && inner.terms[0] instanceof CastExpression) {
+            capturedJls = getSynthCastArgs(inner.terms[0]);
+        }
         if (capturedJls == null) return null;
         int argCount = countTopLevelArgs(capturedJls);
         ClassDefinition substCls = null;
@@ -1352,8 +1372,125 @@ final class MethodInvocation extends LexNode {
         Term castType = new ClassOrIfaceType(qualifiedNameOf(substCls.name()));
         Term cast = new CastExpression(castType, inner);
         cast.setLineInfoFrom(inner);
+        // D2: stash the inner generic args of the chosen slot on the
+        // synthesized cast so a subsequent chained-call substitution
+        // can find them. For `outer.get(0)` against
+        // captured `<Ljava/util/List<Lpkg/X;>;>` at index 0, the
+        // inner args `<Lpkg/X;>` go on the cast — the next chained
+        // call's substitution then resolves X correctly.
+        int extractIndex = tvar != null ? tvarIndexOf(innerMd, tvar)
+                : (argCount == 1 ? 0 : -1);
+        if (extractIndex >= 0) {
+            String innerArgs = extractInnerArgsAtSlot(capturedJls,
+                    extractIndex);
+            if (innerArgs != null) {
+                setSynthCastArgs(cast, innerArgs);
+            }
+        }
         cast.processPass1(c);
         return cast;
+    }
+
+    // Helper for D2 — same lookup buildSynthCast did, factored out.
+    private static int tvarIndexOf(MethodDefinition md, String tvar) {
+        ClassDefinition def = md.definingClass();
+        if (def == null) return -1;
+        String[] names = def.getGenericTypeParamNames();
+        if (names == null) return -1;
+        for (int i = 0; i < names.length; i++) {
+            if (tvar.equals(names[i])) return i;
+        }
+        return -1;
+    }
+
+    // Extract the inner `<...>` block of the JLS arg at `index`, if
+    // that arg is itself a parameterized reference. For
+    // `<Ljava/util/List<Lpkg/X;>;>` at index 0, returns
+    // `<Lpkg/X;>`. Returns null when the slot's arg has no nested
+    // generics (which means the next chained call has nothing to
+    // substitute beyond what the cast type already conveys).
+    private static String extractInnerArgsAtSlot(String jls, int index) {
+        if (jls == null || jls.length() < 2 || jls.charAt(0) != '<'
+                || jls.charAt(jls.length() - 1) != '>') {
+            return null;
+        }
+        int i = 1;
+        int end = jls.length() - 1;
+        int pos = 0;
+        while (i < end) {
+            char ch = jls.charAt(i);
+            if (ch != 'L') return null;
+            int depth = 0;
+            int j = i + 1;
+            int semi = -1;
+            int lt = -1;
+            while (j < end) {
+                char c2 = jls.charAt(j);
+                if (c2 == '<') {
+                    if (depth == 0 && lt < 0) lt = j;
+                    depth++;
+                } else if (c2 == '>') {
+                    depth--;
+                } else if (c2 == ';' && depth == 0) {
+                    semi = j;
+                    break;
+                }
+                j++;
+            }
+            if (semi < 0) return null;
+            if (pos == index) {
+                if (lt < 0 || lt >= semi) return null;
+                // Find the matching '>' for the '<' at `lt`.
+                int innerDepth = 1;
+                int k = lt + 1;
+                while (k < semi) {
+                    char c2 = jls.charAt(k);
+                    if (c2 == '<') innerDepth++;
+                    else if (c2 == '>') {
+                        innerDepth--;
+                        if (innerDepth == 0) {
+                            return jls.substring(lt, k + 1);
+                        }
+                    }
+                    k++;
+                }
+                return null;
+            }
+            pos++;
+            i = semi + 1;
+        }
+        return null;
+    }
+
+    // D2: captured args attached to a CastExpression that THIS
+    // class synthesized for chained-call substitution. The next
+    // chained substitution reads them so nested generic calls
+    // (`outer.get(0).get(0).x()` for `List<List<X>>`) resolve.
+    private static final ObjHashtable synthCastArgs = new ObjHashtable();
+
+    static String getSynthCastArgs(Term cast) {
+        return cast == null ? null : (String) synthCastArgs.get(cast);
+    }
+
+    private static void setSynthCastArgs(Term cast, String args) {
+        if (cast != null && args != null) synthCastArgs.put(cast, args);
+    }
+
+    // D3: walk a class's superclass chain to find the first
+    // ancestor that captured its extends-clause args (set by
+    // ClassDeclaration.processPass0). Returns the captured args
+    // string or null if no ancestor in the chain has them.
+    static String findInheritedCapturedArgs(ClassDefinition cls) {
+        ClassDefinition cur = cls;
+        int safety = 0;
+        while (cur != null) {
+            String args = cur.getSuperClassCapturedArgs();
+            if (args != null) return args;
+            ClassDefinition sup = cur.superClass();
+            if (sup == cur || ++safety > 64) break;
+            cur = sup;
+        }
+        return null;
     }
 
     private static int countTopLevelArgs(String jls) {
@@ -1487,13 +1624,75 @@ final class MethodInvocation extends LexNode {
         return 1;
     }
 
+    // D1: classify a lambda's body for overload-resolution purposes.
+    // SHAPE_VOID  — body never produces a value (block-no-return,
+    //               or expression body that's clearly a statement).
+    // SHAPE_VALUE — body produces a value (expression body, or
+    //               block with `return EXPR;`).
+    // SHAPE_ANY   — body could be either (expression-bodied call
+    //               whose return type isn't syntactically apparent).
+    static final int SHAPE_VOID = 1;
+    static final int SHAPE_VALUE = 2;
+    static final int SHAPE_ANY = 3;
+
+    static int classifyLambdaShape(LambdaExpression lam) {
+        Term body = lam.getBody();
+        if (lam.isBodyBlock()) {
+            return blockHasValueReturn(body) ? SHAPE_VALUE : SHAPE_VOID;
+        }
+        Term inner = body;
+        while (inner instanceof Expression) {
+            inner = ((Expression) inner).terms[0];
+        }
+        // MethodInvocation / Assignment / Postfix++/-- can be either
+        // — they have side effects (statement-shape) but also return a
+        // value. Without a speculative pass1, treat as ambiguous.
+        if (inner instanceof MethodInvocation
+                || inner instanceof Assignment
+                || inner instanceof PostfixOp
+                || inner instanceof PrefixOp) {
+            return SHAPE_ANY;
+        }
+        return SHAPE_VALUE;
+    }
+
+    private static boolean blockHasValueReturn(Term body) {
+        if (body == null || !body.notEmpty()) return false;
+        if (body instanceof ReturnStatement) {
+            return ((ReturnStatement) body).terms[0].notEmpty();
+        }
+        // Don't descend into nested lambda / anonymous class bodies —
+        // their returns belong to a different SAM, not the outer one.
+        if (body instanceof LambdaExpression
+                || body instanceof InstanceCreation
+                || body instanceof ClassDeclaration
+                || body instanceof IfaceDeclaration) {
+            return false;
+        }
+        if (body instanceof LexNode) {
+            Term[] terms = ((LexNode) body).terms;
+            for (int i = 0; i < terms.length; i++) {
+                if (blockHasValueReturn(terms[i])) return true;
+            }
+        }
+        return false;
+    }
+
     // Variant of narrowByLambdaShape that uses -1 as "any arity"
     // for method-references, where the static SAM arity isn't
     // syntactically known without resolution. Falls through to the
     // standard FI check otherwise.
+    //
+    // D1: also narrows by SAM-return-type vs lambda-body-shape.
+    // argLambdaShape uses the SHAPE_* constants from
+    // classifyLambdaShape; SHAPE_ANY accepts any SAM, SHAPE_VOID
+    // requires a void SAM, SHAPE_VALUE requires a non-void SAM.
+    // Method-refs pass SHAPE_ANY (we don't know their return-type
+    // shape syntactically).
     static MethodDefinition narrowByLambdaShapeRespectingArity(
             ClassDefinition cls, String name, int arity,
             boolean[] argIsLambda, int[] argLambdaParamCount,
+            int[] argLambdaShape,
             ClassDefinition forClass) {
         java.util.Enumeration en = cls.enumerateMethodSignatures();
         MethodDefinition match = null;
@@ -1520,6 +1719,15 @@ final class MethodInvocation extends LexNode {
                 if (argLambdaParamCount[i] >= 0
                         && sam.methodSignature().paramCount()
                                 != argLambdaParamCount[i]) {
+                    ok = false; break;
+                }
+                int shape = argLambdaShape[i];
+                boolean samVoid =
+                        sam.exprType().objectSize() == Type.VOID;
+                if (shape == SHAPE_VOID && !samVoid) {
+                    ok = false; break;
+                }
+                if (shape == SHAPE_VALUE && samVoid) {
                     ok = false; break;
                 }
             }

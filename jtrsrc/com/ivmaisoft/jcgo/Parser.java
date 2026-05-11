@@ -4339,12 +4339,22 @@ d : new PrimaryFieldAccess(a, c));
 		// erasure walks the `<...>` and discards. The presence of
 		// generic args is recorded so bridge-method synthesis (also
 		// slice 51) can identify covariant-override candidates.
+		// D3: also retain the captured generic args on the qualified
+		// name (slice 50 side channel) so a subclass with fixed type
+		// args can be resolved at chained-call sites.
 		if (t.kind == 10) {
 			TypeUseAnnotationGroup();
 		}
 		b = QualifiedIdentifier();
 		if (t.kind == 73) {
-			consumeGenericArgs();
+			if (!versionAtLeast(JavaVersion.JLS_50)) {
+				SemError("generic type arguments requires -source 5 or higher (got "
+					+ JavaVersion.format(Main.dict.javaVersion) + ")");
+			}
+			String capturedArgs = captureGenericArgsToJls();
+			if (capturedArgs != null) {
+				recordCapturedGenericArgs(b, capturedArgs);
+			}
 			lastExtendsHadTypeArgs = true;
 		}
 		b = eraseTypeParamRef(b);

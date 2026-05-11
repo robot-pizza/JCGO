@@ -58,16 +58,16 @@ prev_for_21=17
 # the matching -source level. Files outside this list run only the
 # positive test (since they may be pre-modern code that translates at
 # any level).
-neg_5="Foreach Varargs StaticImport Annotations AnnotationType Autobox Enums Generics ForeachQualified EnumSwitch GenericChainedGet ForeachIterable"
+neg_5="Foreach Varargs StaticImport Annotations AnnotationType Autobox Enums Generics ForeachQualified EnumSwitch GenericChainedGet ForeachIterable SubclassFixedTypeArgs NestedGenericChained"
 neg_7="MultiCatch StringSwitch TryWithResources NumericUnderscores SafeVarargs"
-neg_8="DefaultIface Lambda MethodRef TypeUseAnno LambdaCtorArg LambdaGenericSam LambdaUncalledSetter LambdaSupplier"
+neg_8="DefaultIface Lambda MethodRef TypeUseAnno LambdaCtorArg LambdaGenericSam LambdaUncalledSetter LambdaSupplier LambdaOverloadShape"
 neg_9="PrivateIface TwrExisting"
 neg_10="VarLocal VarFor VarForeach VarForeachIterable"
 neg_11="VarLambda"
 neg_14="SwitchArrow SwitchExpr EnumSwitchArrow EnumSwitchExhaustive"
 neg_16="PatternInstanceof Records"
 neg_17="Sealed NonSealed"
-neg_21="SwitchPattern RecordPatterns"
+neg_21="SwitchPattern RecordPatterns EnumSwitchNullCase"
 
 pass=0
 fail=0
