@@ -502,6 +502,23 @@ behavior would require infrastructure JCGO doesn't yet have:
   `tmp == EnumType.null` and miscompile.
 - **Unchecked-cast warnings** (P7).
 
+### D6: for-each over Iterable (closed)
+
+- [x] **For-each over a real Iterable** silently miscompiled with the
+  slice-1 array-walk desugar — `(jObjectArr) list` was a runtime
+  crash. `ForeachStatement.processPass1` now pre-pass1's the iter to
+  inspect its exprType, and routes to either the original array
+  desugar OR a new iterator desugar
+  `Iterator $it = iter.iterator(); while ($it.hasNext()) { T x = (T)
+  $it.next(); body }` matching javac's bytecode lowering (verified
+  by `javap -c`). var-foreach over Iterable resolves the element
+  type from iter's slice-50 captured args so `for (var x : list)`
+  picks up String rather than the erased Object. Fixtures:
+  `examples/java5/ForeachIterable.java`,
+  `examples/java10/VarForeachIterable.java`. Parity verified by
+  running the translated binary alongside `java` on the same source
+  — both emit `7` for the IterFE probe.
+
 ### Won't do
 
 - **JDWP debugger natives.** Substantial native-runtime project
