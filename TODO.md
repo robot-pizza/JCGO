@@ -89,8 +89,13 @@ with stubs returning null/0/empty in place of real data.
    - **POSIX**: `pthread_kill(target, SIGUSR2)` + a sigaction
      handler that runs on the target, captures via `backtrace()`,
      posts a semaphore the caller is waiting on. Mutex-guarded
-     single-capture-at-a-time. Untested on POSIX (no test rig)
-     but structurally complete.
+     single-capture-at-a-time, with a `sem_timedwait` deadline
+     so a failed signal delivery doesn't hang the caller.
+     `backtrace()` is warmed up from the caller thread at
+     handler-install time so glibc's lazy `dlopen` of libgcc's
+     unwinder doesn't run from inside the signal handler.
+     Shipped per the same plan as the Win32 path; not exercised
+     by JCGO's e2e harness (no POSIX test rig in-repo).
   Java bridge: `VMThread.getVmdata()` + `VMAccessorJavaLang
   .getVmdataVMThread(Thread)` exposes the per-thread TCB pointer
   across the package boundary; `VMThrowable.buildStackTrace(Object
@@ -99,10 +104,12 @@ with stubs returning null/0/empty in place of real data.
   Throwable uses.
 
   Win32 x86: `jcgo_gmt_walkStack` falls back to `StackWalk64`
-  from DbgHelp (delegates to jcgothrw.c's lazy SymInitialize for
-  the symbol-table init). Verified to compile correctly (symbols
-  resolve from mingw's `psdk_inc/_dbg_common.h`); runtime test
-  would need a 32-bit toolchain JCGO's e2e doesn't have.
+  from DbgHelp, with the symbol-table init delegated to
+  jcgothrw.c's existing lazy `jcgo_thrw_initDbg`.
+  `SymFunctionTableAccess64` and `SymGetModuleBase64` serve as the
+  function-table and module-base callbacks. Shipped alongside the
+  x64 path; not exercised by JCGO's e2e harness (no 32-bit
+  toolchain in-repo).
 - ~~`ThreadMXBean.dumpAllThreads()`~~ — n/a; doesn't exist in
   classpath-0.93's `ThreadMXBean` interface (Java-6 addition that
   postdates the classpath release we're built against).
