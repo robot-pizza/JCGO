@@ -98,9 +98,11 @@ with stubs returning null/0/empty in place of real data.
   captured PCs through the same demangling + line-resolution chain
   Throwable uses.
 
-  Win32 x86 still returns null from the native (no
-  `RtlLookupFunctionEntry`). A `StackWalk64` fallback would close
-  that gap.
+  Win32 x86: `jcgo_gmt_walkStack` falls back to `StackWalk64`
+  from DbgHelp (delegates to jcgothrw.c's lazy SymInitialize for
+  the symbol-table init). Verified to compile correctly (symbols
+  resolve from mingw's `psdk_inc/_dbg_common.h`); runtime test
+  would need a 32-bit toolchain JCGO's e2e doesn't have.
 - ~~`ThreadMXBean.dumpAllThreads()`~~ — n/a; doesn't exist in
   classpath-0.93's `ThreadMXBean` interface (Java-6 addition that
   postdates the classpath release we're built against).

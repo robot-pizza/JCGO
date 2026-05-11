@@ -165,12 +165,102 @@ static int jcgo_gmt_capInit(void)
 
 #endif /* !JCGO_WIN32 && JCGO_THREADS */
 
+#if defined(JCGO_WIN32) && defined(JCGO_THREADS) \
+    && !defined(JCGO_NOSTACKTRACECAPTURE)
+
+/* Walks the (suspended) thread's stack starting from `ctx`. Stores
+ * up to `maxFrames` frame PCs into `frames` and returns the count.
+ *
+ * Two strategies depending on arch:
+ *   - x64: RtlLookupFunctionEntry + RtlVirtualUnwind. Lossless when
+ *     the binary carries the .pdata section (every PE on x64 does).
+ *   - x86: StackWalk64 from DbgHelp. Slower and relies on FPO data
+ *     /symbol-table-based stack-pointer recovery, but works without
+ *     the x64-only unwind metadata. Requires SymInitialize to have
+ *     run on the process — we delegate to jcgothrw.c's lazy init.
+ */
+static int jcgo_gmt_walkStack(HANDLE thread, CONTEXT *ctx,
+                              void **frames, int maxFrames)
+{
+#if defined(_M_X64) || defined(__x86_64__)
+ int count = 0;
+ int n;
+ (void)thread;
+ for (n = 0; n < maxFrames; n++) {
+  DWORD64 pc;
+  DWORD64 imageBase;
+  PRUNTIME_FUNCTION rf;
+  PVOID handlerData;
+  DWORD64 establisherFrame;
+
+  pc = ctx->Rip;
+  if (pc == 0) break;
+  frames[count++] = (void *)(size_t)pc;
+
+  imageBase = 0;
+  rf = RtlLookupFunctionEntry(pc, &imageBase, NULL);
+  if (!rf) {
+   /* Leaf frame with no unwind info — fall back to a naive
+    * `pop rip` from the suspended RSP. */
+   DWORD64 *rsp = (DWORD64 *)ctx->Rsp;
+   if (!rsp) break;
+   ctx->Rip = *rsp;
+   ctx->Rsp += 8;
+   if (ctx->Rip == 0) break;
+   continue;
+  }
+  handlerData = NULL;
+  establisherFrame = 0;
+  RtlVirtualUnwind(0 /* UNW_FLAG_NHANDLER */, imageBase, pc, rf,
+                   ctx, &handlerData, &establisherFrame, NULL);
+  if (ctx->Rip == 0) break;
+ }
+ return count;
+#else
+ /* x86 fallback via StackWalk64.
+  *
+  * jcgo_thrw_initDbg (defined in jcgothrw.c, included earlier in
+  * the same translation unit) loads dbghelp.dll lazily and calls
+  * SymInitialize for the current process. SymFunctionTableAccess64
+  * and SymGetModuleBase64 are direct dbghelp exports — we link
+  * with -ldbghelp on every Win32 build.
+  */
+ STACKFRAME64 sf;
+ int count = 0;
+ HANDLE proc = GetCurrentProcess();
+
+ jcgo_thrw_initDbg();
+
+ ZeroMemory(&sf, sizeof(sf));
+ sf.AddrPC.Offset    = ctx->Eip;
+ sf.AddrPC.Mode      = AddrModeFlat;
+ sf.AddrFrame.Offset = ctx->Ebp;
+ sf.AddrFrame.Mode   = AddrModeFlat;
+ sf.AddrStack.Offset = ctx->Esp;
+ sf.AddrStack.Mode   = AddrModeFlat;
+
+ while (count < maxFrames) {
+  if (!StackWalk64(IMAGE_FILE_MACHINE_I386, proc, thread, &sf, ctx,
+                   NULL,
+                   SymFunctionTableAccess64, SymGetModuleBase64,
+                   NULL)) {
+   break;
+  }
+  if (sf.AddrPC.Offset == 0) break;
+  frames[count++] = (void *)(size_t)sf.AddrPC.Offset;
+ }
+ return count;
+#endif
+}
+
+#endif /* JCGO_WIN32 && JCGO_THREADS */
+
 JCGO_NOSEP_STATIC java_lang_Object CFASTCALL
 gnu_java_lang_management_VMThreadMXBeanImpl__captureThreadStackTrace0__Lo(
  java_lang_Object vmdata )
 {
 #if defined(JCGO_WIN32) && defined(JCGO_THREADS) \
-    && (defined(_M_X64) || defined(__x86_64__))
+    && !defined(JCGO_NOSTACKTRACECAPTURE)
  struct jcgo_tcb_s *tcb;
  HANDLE handle;
  CONTEXT ctx;
@@ -198,36 +288,8 @@ gnu_java_lang_management_VMThreadMXBeanImpl__captureThreadStackTrace0__Lo(
   return jnull;
  }
 
- count = 0;
- for (n = 0; n < JCGO_TRACE_MAX_FRAMES; n++) {
-  DWORD64 pc;
-  DWORD64 imageBase;
-  PRUNTIME_FUNCTION rf;
-  PVOID handlerData;
-  DWORD64 establisherFrame;
-
-  pc = ctx.Rip;
-  if (pc == 0) break;
-  frames[count++] = (void *)(size_t)pc;
-
-  imageBase = 0;
-  rf = RtlLookupFunctionEntry(pc, &imageBase, NULL);
-  if (!rf) {
-   /* Leaf frame with no unwind info — fall back to a naive
-    * `pop rip` from the suspended RSP. */
-   DWORD64 *rsp = (DWORD64 *)ctx.Rsp;
-   if (!rsp) break;
-   ctx.Rip = *rsp;
-   ctx.Rsp += 8;
-   if (ctx.Rip == 0) break;
-   continue;
-  }
-  handlerData = NULL;
-  establisherFrame = 0;
-  RtlVirtualUnwind(0 /* UNW_FLAG_NHANDLER */, imageBase, pc, rf,
-                   &ctx, &handlerData, &establisherFrame, NULL);
-  if (ctx.Rip == 0) break;
- }
+ count = jcgo_gmt_walkStack(handle, &ctx, frames,
+                            JCGO_TRACE_MAX_FRAMES);
 
  ResumeThread(handle);
 
