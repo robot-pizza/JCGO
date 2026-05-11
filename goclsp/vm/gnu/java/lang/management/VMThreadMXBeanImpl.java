@@ -262,12 +262,13 @@ final class VMThreadMXBeanImpl
    int isUserTime); /* JVM-core */
 
  // Cross-thread stack-walk. Suspends the target thread, captures
- // its CONTEXT, walks via RtlVirtualUnwind on Win32 x64 (POSIX path
- // uses pthread_kill + sigaction handler — TODO), resumes. Returns
- // a long[] of frame PCs in the same shape VMThrowable.vmdata uses
- // so VMThrowable.buildStackTrace can render it. Returns null when
- // the platform doesn't support cross-thread walking or the
- // suspend/walk failed.
+ // its CONTEXT, walks via RtlVirtualUnwind (Win32 x64) or
+ // StackWalk64 (Win32 x86), resumes. POSIX runs the walk via
+ // pthread_kill + a sigaction handler that captures the target's
+ // own backtrace. Returns a long[] of frame PCs in the same shape
+ // VMThrowable.vmdata uses so VMThrowable.buildStackTrace can
+ // render it. Returns null when the platform doesn't support
+ // cross-thread walking or the suspend/walk failed.
  private static native Object captureThreadStackTrace0(
    Object vmdata); /* JVM-core */
 }

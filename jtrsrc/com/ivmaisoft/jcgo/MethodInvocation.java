@@ -1610,11 +1610,12 @@ final class MethodInvocation extends LexNode {
     // `X(String, String)` vs `X(String, Runnable)`) — the lambda
     // can only legally target the FI-typed slot.
     //
-    // Doesn't help genuinely-ambiguous overloads where two same-arity
+    // For genuinely-ambiguous overloads where two same-arity
     // candidates both have FI-typed slots at the lambda's position
-    // (e.g. `X(String, Runnable)` vs `X(String, Supplier<Integer>)`)
-    // — those require full lambda-body return-type inference, which
-    // remains a deferred deviation noted in TODO.md.
+    // (e.g. `X(String, Runnable)` vs `X(String, Supplier<Integer>)`),
+    // narrowByLambdaShapeRespectingArity adds a SECOND filter that
+    // narrows by SAM-return-type vs `classifyLambdaShape` — see D1
+    // notes in TODO.md.
     private static int countLambdaParams(Term paramsTerm) {
         if (paramsTerm == null || !paramsTerm.notEmpty()) return 0;
         if (paramsTerm instanceof Seq) {
