@@ -472,10 +472,9 @@ semantics. Smoke harness: positive 99/99, negative 43/43, skipped 3.
   `examples/java14/EnumSwitchNonExhaustive.java` (inv_14 negative
   asserts the error).
 
-- [ ] **P7: unchecked-cast diagnostic.** Lint-only. javac emits
-  "unchecked cast" warnings for `(List<String>) x` style casts
-  where the runtime check can't verify the parameterized args.
-  JCGO doesn't track / emit lint warnings broadly; deferred.
+- [x] **P7: unchecked-cast diagnostic.** Shipped in the round-2
+  follow-up — see the "Deviations from javac — round-2 closes"
+  section below for the final implementation.
 
 ### Deviations from javac — round-2 closes (audited)
 
