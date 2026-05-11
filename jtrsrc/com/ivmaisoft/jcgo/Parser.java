@@ -407,6 +407,13 @@ public class Parser {
 		return z;
 	}
 
+	// Issue #148: signal threaded from QualIdentNewInstanceTail to
+	// ArgumentsOptClassBody so we can wrap the anon-class body in
+	// BridgeSynthesis only when the supertype was parameterized. Static
+	// because the recursive-descent parser is single-threaded and
+	// non-reentrant for this path.
+	private static boolean anonExtendsParameterized;
+
 	private static Term ArgumentsOptClassBody(Term b) {
 		Term z;
 		Term d = Empty.term, f = Empty.term;
@@ -415,8 +422,22 @@ public class Parser {
 			d = ArgumentList();
 		}
 		Expect(12);
+		boolean wasParameterized = anonExtendsParameterized;
+		anonExtendsParameterized = false;
 		if (t.kind == 28) {
 			f = ClassBody();
+			// Issue #148: anonymous-class body that implements/extends a
+			// parameterized supertype (`new Listener<String>() {...}`)
+			// declares its SAM impl with a narrowed parameter type
+			// (`onValue(String)`) that doesn't match the erased SAM
+			// (`onValue(Object)`). Without a synthesized bridge the
+			// override is unrecognized, the user method is treated as
+			// unused, no body is emitted, and the vtable slot for the
+			// interface SAM ends up null — interface dispatch crashes
+			// at runtime. BridgeSynthesis.wrap inserts the bridge.
+			if (wasParameterized && f.notEmpty()) {
+				f = BridgeSynthesis.wrap(f);
+			}
 		}
 		z = new InstanceCreation(b, d, f);
 		return z;
@@ -450,10 +471,15 @@ public class Parser {
 		b = QualifiedIdentifier();
 		// Slice 24: `new Foo<...>(args)` — consume + erase the type args.
 		// Also handles the diamond `<>` (zero-content angle pair).
+		boolean hadGenericArgs = false;
 		if (t.kind == 73) {
 			consumeGenericArgs();
+			hadGenericArgs = true;
 		}
+		// Issue #148: signal anon-class arm so BridgeSynthesis runs.
+		anonExtendsParameterized = hadGenericArgs;
 		z = NewInstanceBody(new ClassOrIfaceType(b));
+		anonExtendsParameterized = false;
 		return z;
 	}
 
